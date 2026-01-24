@@ -557,8 +557,9 @@ app.use((err: any, req: any, res: any, next: any) => {
 });
 
 // ------------------- START SERVER (LAST) -------------------
-app.listen(4000, () => {
-  console.log("Backend running on port 4000");
+const port = Number(process.env.PORT) || 4000;
+app.listen(port, () => {
+  console.log(`Backend running on port ${port}`);
 });
 
 
