@@ -8,16 +8,25 @@ import { PrismaClient } from "@prisma/client";
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
-app.options(/.*/, cors());
+
+
+// ✅ CORS FIRST
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+  ],
+  credentials: true,
+}));
+
+// ✅ Express 5 safe preflight handler
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json());
+
 
 // ------------------- DEBUG ROUTES (TEMP) -------------------
 app.get("/debug-env", (req, res) => {
@@ -565,9 +574,10 @@ app.use((err: any, req: any, res: any, next: any) => {
 });
 
 // ------------------- START SERVER (LAST) -------------------
-const port = Number(process.env.PORT) || 4000;
-app.listen(port, () => {
-  console.log(`Backend running on port ${port}`);
+const PORT = process.env.PORT || 4000;
+
+app.listen(PORT, () => {
+  console.log("Backend running on port", PORT);
 });
 
 
