@@ -1,0 +1,64 @@
+POS System
+
+-------------------Parts of the system------------------------
+
+Product / Item Management :
+
+Item name
+   Category (Rice, Spices, Frozen, Drinks, etc.)
+   Barcode / SKU
+   Unit type
+     Kg
+     g
+     Pieces
+     Bundles
+     Litres
+     ml
+     Card 10g
+     Card 20g
+Cost price
+Selling price
+Profit margin (auto calculate)
+Minimum stock level (low stock alert)
+Expiry date (very important for grocery)
+Supplier name
+Supplier Address
+Supplier Mobile
+
+Inventory / Stock Management:
+
+Stock in / stock out
+Auto stock deduction on sales
+Manual stock adjustment
+Damaged / expired stock entry
+Stock transfer (if multiple branches)
+Low stock notifications
+Expiry alerts
+Daily / weekly stock reports
+
+Billing / Sales Module:
+
+Fast item search (by name, barcode)
+Barcode scanner support
+Quantity editing
+Discount (item-wise / bill-wise)
+Tax calculation
+Multiple payment methods:
+	Cash
+	Card
+	QR / Wallet
+	Credit (pay later)
+Hold / resume bills
+Cancel / refund bills
+Print receipt / digital receipt
+
+Customer Management (Optional but Powerful)
+
+Customer name
+Customer Address
+Phone number
+Credit limit
+Credit balance
+Purchase history
+Loyalty points / discounts
+SMS bill notification (optional)

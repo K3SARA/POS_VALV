@@ -1,0 +1,67 @@
+{
+  "name": "pos-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "main": "electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/K3SARA/pos_grocery.git"
+  },
+  "scripts": {
+    "build:frontend": "cd frontend && npm install && npm run build",
+    "build:backend": "cd backend && npm install && npm run build",
+    "build": "npm run build:frontend && npm run build:backend",
+    "electron:dev": "electron .",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "electron": "^33.4.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.pos.desktop",
+    "productName": "POS Desktop",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "files": [
+      "electron/**"
+    ],
+    "extraResources": [
+      {
+        "from": "frontend/build",
+        "to": "frontend/build"
+      },
+      {
+        "from": "backend/dist",
+        "to": "backend/dist"
+      },
+      {
+        "from": "backend/node_modules",
+        "to": "backend/node_modules"
+      },
+      {
+        "from": "backend/package.json",
+        "to": "backend/package.json"
+      },
+      {
+        "from": "backend/.env",
+        "to": "backend/.env"
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github"
+      }
+    ]
+  }
+}
