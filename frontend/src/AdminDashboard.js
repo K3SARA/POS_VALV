@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
 
@@ -45,7 +45,7 @@ export default function AdminDashboard({ onLogout }) {
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [analyticsLoaded, setAnalyticsLoaded] = useState(false);
 
-  const loadSummary = async () => {
+  const loadSummary = useCallback(async () => {
     setMsg("");
     setLoading(true);
     try {
@@ -56,9 +56,9 @@ export default function AdminDashboard({ onLogout }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadProducts = async (nextPage = 0) => {
+  const loadProducts = useCallback(async (nextPage = 0) => {
     setMsg("");
     setLoading(true);
     try {
@@ -72,9 +72,9 @@ export default function AdminDashboard({ onLogout }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pageSize]);
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setMsg("");
     setLoading(true);
     try {
@@ -86,9 +86,9 @@ export default function AdminDashboard({ onLogout }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadAnalytics = async () => {
+  const loadAnalytics = useCallback(async () => {
     setMsg("");
     setLoading(true);
     try {
@@ -100,11 +100,11 @@ export default function AdminDashboard({ onLogout }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadSummary();
-  }, []);
+  }, [loadSummary]);
 
   useEffect(() => {
     if (!fastMode) {
@@ -112,7 +112,7 @@ export default function AdminDashboard({ onLogout }) {
       if (!usersLoaded) loadUsers();
       if (!analyticsLoaded) loadAnalytics();
     }
-  }, [fastMode]);
+  }, [fastMode, productsLoaded, usersLoaded, analyticsLoaded, loadProducts, loadUsers, loadAnalytics]);
 
   const visibleProducts = useMemo(() => {
     const normalize = (v) => String(v ?? "").toLowerCase();

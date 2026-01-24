@@ -22,8 +22,6 @@ export default function Cashier({ onLogout }) {
   const [loading, setLoading] = useState(false);
 
   // ✅ Sales History
-  const [sales, setSales] = useState([]);
-  const [openSaleId, setOpenSaleId] = useState(null);
 
   const subtotal = useMemo(
     () =>
@@ -169,8 +167,7 @@ export default function Cashier({ onLogout }) {
     setMsg("");
     try {
       setLoading(true);
-      const data = await apiFetch("/sales");
-      setSales(data);
+      await apiFetch("/sales");
     } catch (e) {
       setMsg("❌ " + e.message);
     } finally {
