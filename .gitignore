@@ -3,3 +3,8 @@ dist/
 backend/dist/
 backend/node_modules/
 frontend/node_modules/
+
+# mobile local files
+mobile/.env
+mobile/.expo/
+
