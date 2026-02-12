@@ -4,9 +4,8 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
-
 
 model User {
   id        Int      @id @default(autoincrement())
@@ -14,40 +13,129 @@ model User {
   password  String
   role      String
   createdAt DateTime @default(now())
+
+  saleReturns SaleReturn[]
+  draftSales DraftSale[]
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?  @unique
+  address   String?
+  notes     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sales     Sale[]
 }
 
 model Product {
   id        Int        @id @default(autoincrement())
   barcode   String     @unique
   name      String
-  price     Decimal    @db.Decimal(10,2)
+  price     Decimal
   stock     Int
+  damagedStock Int @default(0)
+  supplierName      String?
+  supplierInvoiceNo String?
+  supplierPaymentMethod String?
+  receivedDate      DateTime?
+  invoicePhoto      String?
   saleItems SaleItem[]
+  returnItems ReturnItem[]
 }
 
 model Sale {
-  id        Int        @id @default(autoincrement())
-  total     Decimal    @db.Decimal(10,2)
-  createdAt DateTime   @default(now())
+  id        Int      @id @default(autoincrement())
+  
+  total     Decimal
+  paymentMethod String @default("cash")
+  discountType String  @default("none")
+  discountValue Decimal @default(0)
+  createdAt DateTime @default(now())
+
   saleItems SaleItem[]
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  saleReturns SaleReturn[]
 }
 
 model SaleItem {
-  id        Int      @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
+ 
   saleId    Int
   productId Int
+  barcode   String
   qty       Int
-  price     Decimal  @db.Decimal(10,2)
+  freeQty   Int     @default(0)
+  price     Decimal
+  itemDiscountType  String?  // "none" | "amount" | "percent"
+  itemDiscountValue Decimal? // numeric value
 
-  sale      Sale     @relation(fields: [saleId], references: [id])
-  product   Product  @relation(fields: [productId], references: [id])
+  
+
+  sale    Sale    @relation(fields: [saleId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  returnItems ReturnItem[]
 }
 
 model EndDay {
   id         Int      @id @default(autoincrement())
   date       DateTime @unique
   billCount  Int
-  totalSales Decimal  @db.Decimal(10,2)
+  totalSales Decimal
   totalItems Int
   createdAt  DateTime @default(now())
+}
+
+model SaleReturn {
+  id Int @id @default(autoincrement())
+
+  saleId Int
+  sale   Sale @relation(fields: [saleId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  createdById Int?
+  createdBy   User? @relation(fields: [createdById], references: [id])
+
+  reason        String
+  returnToStock Boolean @default(true)
+
+  totalRefund Decimal @default(0)
+
+  items ReturnItem[]
+}
+
+model ReturnItem {
+  id Int @id @default(autoincrement())
+
+  returnId   Int
+  saleReturn SaleReturn @relation(fields: [returnId], references: [id])
+
+  saleItemId Int
+  saleItem   SaleItem @relation(fields: [saleItemId], references: [id])
+
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+
+  qty       Int
+  price     Decimal
+  lineTotal Decimal?
+}
+
+model DraftSale {
+  id          Int      @id @default(autoincrement())
+  name        String?
+  data        Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdById Int?
+  createdBy   User? @relation(fields: [createdById], references: [id])
 }
