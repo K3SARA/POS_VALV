@@ -8,7 +8,8 @@
     "start": "node dist/index.js",
     "build": "tsc",
     "postinstall": "prisma generate",
-    "start:railway": "prisma migrate deploy && node dist/index.js"
+    "start:railway": "prisma db push && node dist/index.js"
+
   },
   "keywords": [],
   "author": "",
