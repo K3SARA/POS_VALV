@@ -1,15 +1,74 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Modal,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { apiFetch } from "../api/client";
+import { useAuth } from "../context/AuthContext";
+
+const OUT_PREFIX = "OUTSTANDING:";
+
+function normalizeBarcode(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
+function parseOutstanding(notes) {
+  const text = String(notes || "");
+  const line = text
+    .split("\n")
+    .map((v) => v.trim())
+    .find((v) => v.toUpperCase().startsWith(OUT_PREFIX));
+  if (!line) return 0;
+  const raw = line.slice(OUT_PREFIX.length).trim();
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function upsertOutstanding(notes, value) {
+  const safe = Math.max(0, Number(value || 0));
+  const text = String(notes || "");
+  const lines = text
+    .split("\n")
+    .map((v) => v.trim())
+    .filter((v) => v && !v.toUpperCase().startsWith(OUT_PREFIX));
+  return [`${OUT_PREFIX}${Math.round(safe)}`, ...lines].join("\n");
+}
+
+function buildReceiptText(receipt) {
+  if (!receipt) return "";
+  const lines = [
+    "POS RECEIPT",
+    `Date: ${receipt.date}`,
+    `Customer: ${receipt.customerName || "-"}`,
+    `Payment: ${receipt.paymentMethod}`,
+    "------------------------",
+  ];
+  (receipt.items || []).forEach((item) => {
+    const lineTotal = Number(item.qty || 0) * Number(item.price || 0);
+    lines.push(`${item.name} (${item.barcode})`);
+    lines.push(`  ${item.qty} x ${Math.round(Number(item.price || 0))} = ${Math.round(lineTotal)}`);
+  });
+  lines.push("------------------------");
+  lines.push(`Subtotal: ${Math.round(receipt.subtotal)}`);
+  lines.push(`Discount: ${Math.round(receipt.discount)}`);
+  lines.push(`Bill Total: ${Math.round(receipt.total)}`);
+  lines.push(`Cash Received: ${Math.round(receipt.cashReceived)}`);
+  lines.push(`Outstanding: ${Math.round(receipt.outstanding)}`);
+  lines.push(`Customer Outstanding Now: ${Math.round(receipt.customerOutstandingNow)}`);
+  return lines.join("\n");
+}
 
 function CartRow({ item, onQtyChange, onRemove }) {
   const qty = Number(item.qty || 0);
@@ -21,18 +80,23 @@ function CartRow({ item, onQtyChange, onRemove }) {
       <View style={{ flex: 1 }}>
         <Text style={styles.cartName}>{item.name}</Text>
         <Text style={styles.cartMeta}>Barcode: {item.barcode}</Text>
-        <Text style={styles.cartMeta}>Price: {price}</Text>
+        <Text style={styles.cartMeta}>Price: {Math.round(price)}</Text>
       </View>
       <View style={styles.qtyBox}>
         <Pressable style={styles.qtyButton} onPress={() => onQtyChange(item.barcode, Math.max(1, qty - 1))}>
           <Text style={styles.qtyButtonText}>-</Text>
         </Pressable>
-        <Text style={styles.qtyValue}>{qty}</Text>
+        <TextInput
+          value={String(qty)}
+          onChangeText={(v) => onQtyChange(item.barcode, Number(v || 0))}
+          keyboardType="numeric"
+          style={styles.qtyInput}
+        />
         <Pressable style={styles.qtyButton} onPress={() => onQtyChange(item.barcode, qty + 1)}>
           <Text style={styles.qtyButtonText}>+</Text>
         </Pressable>
       </View>
-      <View style={{ alignItems: "flex-end", width: 84 }}>
+      <View style={{ alignItems: "flex-end", width: 88 }}>
         <Text style={styles.rowTotal}>{Math.round(total)}</Text>
         <Pressable onPress={() => onRemove(item.barcode)}>
           <Text style={styles.remove}>Remove</Text>
@@ -43,6 +107,7 @@ function CartRow({ item, onQtyChange, onRemove }) {
 }
 
 export default function CashierScreen() {
+  const { username } = useAuth();
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [cart, setCart] = useState([]);
@@ -51,12 +116,23 @@ export default function CashierScreen() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [cashReceived, setCashReceived] = useState("");
   const [discountType, setDiscountType] = useState("none");
   const [discountValue, setDiscountValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showItemDropdown, setShowItemDropdown] = useState(false);
+  const [showCustomerNameDropdown, setShowCustomerNameDropdown] = useState(false);
+  const [showCustomerPhoneDropdown, setShowCustomerPhoneDropdown] = useState(false);
+  const [selectedItemRow, setSelectedItemRow] = useState("");
+  const [selectedCustomerRow, setSelectedCustomerRow] = useState("");
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [lastReceipt, setLastReceipt] = useState(null);
+
+  const anyDropdownOpen = showItemDropdown || showCustomerNameDropdown || showCustomerPhoneDropdown;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -94,15 +170,47 @@ export default function CashierScreen() {
 
   const barcodeSuggestions = useMemo(() => {
     const q = barcode.trim().toLowerCase();
-    if (!q) return [];
     return products
+      .filter((p) => Number(p.stock || 0) > 0)
       .filter((p) => {
+        if (!q) return true;
         const name = String(p.name || "").toLowerCase();
         const code = String(p.barcode || "").toLowerCase();
         return code.includes(q) || name.includes(q);
       })
-      .slice(0, 8);
+      .slice(0, 12);
   }, [products, barcode]);
+
+  const customerNameSuggestions = useMemo(() => {
+    const q = customerName.trim().toLowerCase();
+    return customers
+      .filter((c) => {
+        if (!q) return true;
+        const name = String(c.name || "").toLowerCase();
+        const phone = String(c.phone || "").toLowerCase();
+        return name.includes(q) || phone.includes(q);
+      })
+      .slice(0, 20);
+  }, [customers, customerName]);
+
+  const customerPhoneSuggestions = useMemo(() => {
+    const q = customerPhone.trim().toLowerCase();
+    return customers
+      .filter((c) => {
+        if (!q) return true;
+        const name = String(c.name || "").toLowerCase();
+        const phone = String(c.phone || "").toLowerCase();
+        return phone.includes(q) || name.includes(q);
+      })
+      .slice(0, 20);
+  }, [customers, customerPhone]);
+
+  const selectedCustomer = useMemo(
+    () => customers.find((c) => c.id === selectedCustomerId) || null,
+    [customers, selectedCustomerId]
+  );
+
+  const customerOutstandingNow = selectedCustomer ? parseOutstanding(selectedCustomer.notes) : 0;
 
   const subtotal = useMemo(() => {
     return cart.reduce((sum, item) => sum + Number(item.qty || 0) * Number(item.price || 0), 0);
@@ -110,9 +218,7 @@ export default function CashierScreen() {
 
   const discountAmount = useMemo(() => {
     const value = Number(discountValue || 0);
-    if (discountType === "amount") {
-      return Math.max(0, Math.min(value, subtotal));
-    }
+    if (discountType === "amount") return Math.max(0, Math.min(value, subtotal));
     if (discountType === "percent") {
       const pct = Math.max(0, Math.min(value, 100));
       return (subtotal * pct) / 100;
@@ -120,13 +226,21 @@ export default function CashierScreen() {
     return 0;
   }, [discountType, discountValue, subtotal]);
 
-  const total = Math.max(0, subtotal - discountAmount);
+  const billTotal = Math.max(0, subtotal - discountAmount);
+  const hasCashInput = String(cashReceived || "").trim().length > 0;
+  const cashInputNumber = Number(cashReceived || 0);
+  const normalizedCashReceived = Number.isFinite(cashInputNumber)
+    ? Math.max(0, cashInputNumber)
+    : paymentMethod === "cash" && !hasCashInput
+      ? billTotal
+      : 0;
+  const saleOutstanding = paymentMethod === "credit" ? billTotal : Math.max(0, billTotal - normalizedCashReceived);
+  const customerOutstandingAfterSale = Math.max(0, customerOutstandingNow + billTotal - normalizedCashReceived);
 
-  function normalizeBarcode(value) {
-    return String(value || "")
-      .trim()
-      .replace(/\s+/g, "")
-      .toLowerCase();
+  function closeAllDropdowns() {
+    setShowItemDropdown(false);
+    setShowCustomerNameDropdown(false);
+    setShowCustomerPhoneDropdown(false);
   }
 
   function getCartQty(code) {
@@ -141,8 +255,6 @@ export default function CashierScreen() {
     if (!clean) return;
 
     let product = products.find((p) => normalizeBarcode(p.barcode) === clean);
-
-    // Fallback: fetch directly from backend in case local list is stale.
     if (!product) {
       try {
         const exactCode = String(code || "").trim().replace(/\s+/g, "");
@@ -155,7 +267,7 @@ export default function CashierScreen() {
           });
         }
       } catch {
-        // keep default not-found error below
+        // use not found error
       }
     }
 
@@ -181,10 +293,11 @@ export default function CashierScreen() {
     });
     setBarcode("");
     setError("");
+    setShowItemDropdown(false);
   }
 
   function changeQty(code, nextQty) {
-    const qty = Number(nextQty || 1);
+    const qty = Number(nextQty || 0);
     if (!Number.isFinite(qty) || qty < 1) return;
     const product = products.find((p) => p.barcode === code);
     const stock = Number(product?.stock || 0);
@@ -199,15 +312,44 @@ export default function CashierScreen() {
     setCart((prev) => prev.filter((item) => item.barcode !== code));
   }
 
-  function useCustomer(customer) {
+  function chooseCustomer(customer) {
+    setSelectedCustomerId(customer.id);
     setCustomerName(customer.name || "");
     setCustomerPhone(customer.phone || "");
     setCustomerAddress(customer.address || "");
+    setSelectedCustomerRow(String(customer.id));
+    closeAllDropdowns();
+  }
+
+  async function updateCustomerOutstanding(newOutstanding) {
+    if (!selectedCustomerId) return;
+    const target = customers.find((c) => c.id === selectedCustomerId);
+    if (!target) return;
+    const nextNotes = upsertOutstanding(target.notes, newOutstanding);
+    try {
+      const updated = await apiFetch(`/customers/${selectedCustomerId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          notes: nextNotes,
+          name: target.name,
+          phone: target.phone,
+          address: target.address,
+        }),
+      });
+      setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    } catch {
+      // keep sale success even if notes update fails
+    }
   }
 
   async function completeSale() {
     if (cart.length === 0) {
       setError("Cart is empty");
+      return;
+    }
+
+    if (paymentMethod === "cash" && normalizedCashReceived < billTotal && !selectedCustomerId && !customerName.trim()) {
+      setError("Select customer for partial cash payments");
       return;
     }
 
@@ -220,7 +362,7 @@ export default function CashierScreen() {
           barcode: item.barcode,
           qty: Number(item.qty || 0),
         })),
-        paymentMethod,
+        paymentMethod: paymentMethod === "cash" && saleOutstanding > 0 ? "credit" : paymentMethod,
         discountType,
         discountValue: Number(discountValue || 0),
       };
@@ -233,15 +375,33 @@ export default function CashierScreen() {
         };
       }
 
-      await apiFetch("/sales", {
+      const saleResponse = await apiFetch("/sales", {
         method: "POST",
         body: JSON.stringify(payload),
       });
+
+      await updateCustomerOutstanding(customerOutstandingAfterSale);
+
+      setLastReceipt({
+        saleId: saleResponse?.sale?.id || "",
+        date: new Date().toLocaleString(),
+        items: cart,
+        subtotal,
+        discount: discountAmount,
+        total: billTotal,
+        paymentMethod,
+        cashReceived: normalizedCashReceived,
+        outstanding: saleOutstanding,
+        customerOutstandingNow: customerOutstandingAfterSale,
+        customerName,
+      });
+      setShowPrintPreview(true);
 
       setCart([]);
       setDiscountType("none");
       setDiscountValue("");
       setPaymentMethod("cash");
+      setCashReceived("");
       setMessage("Sale completed");
       await loadData();
     } catch (e) {
@@ -251,142 +411,287 @@ export default function CashierScreen() {
     }
   }
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 16 }}>
-      <Text style={styles.heading}>Cashier</Text>
-      {loading ? <ActivityIndicator style={{ marginBottom: 10 }} /> : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {message ? <Text style={styles.success}>{message}</Text> : null}
+  async function onPrintReceipt() {
+    try {
+      await Share.share({ message: buildReceiptText(lastReceipt) });
+    } catch {
+      Alert.alert("Print", "Unable to open print/share dialog on this device.");
+    }
+  }
 
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Add Item</Text>
-        <View style={styles.inline}>
+  return (
+    <View style={{ flex: 1 }}>
+      {anyDropdownOpen ? <Pressable style={styles.dropdownBackdrop} onPress={closeAllDropdowns} /> : null}
+      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 16 }}>
+        <Text style={styles.heading}>Cashier | {username || "User"}</Text>
+        {loading ? <ActivityIndicator style={{ marginBottom: 10 }} /> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {message ? <Text style={styles.success}>{message}</Text> : null}
+
+        <View style={[styles.panel, { zIndex: 20 }]}>
+          <Text style={styles.panelTitle}>Add Item</Text>
+          <View style={styles.inline}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              value={barcode}
+              onChangeText={(v) => {
+                setBarcode(v);
+                setShowItemDropdown(true);
+                setShowCustomerNameDropdown(false);
+                setShowCustomerPhoneDropdown(false);
+              }}
+              onFocus={() => setShowItemDropdown(true)}
+              placeholder="Barcode"
+            />
+            <Pressable style={styles.action} onPress={() => void addToCartByBarcode(barcode)}>
+              <Text style={styles.actionText}>Add</Text>
+            </Pressable>
+          </View>
+
+          {showItemDropdown ? (
+            <View style={styles.suggestBox}>
+              <ScrollView nestedScrollEnabled style={{ maxHeight: 240 }}>
+                {barcodeSuggestions.length === 0 ? (
+                  <Text style={styles.suggestEmpty}>No in-stock items found</Text>
+                ) : (
+                  barcodeSuggestions.map((item) => {
+                    const key = String(item.id || item.barcode);
+                    const inCartQty = getCartQty(item.barcode);
+                    return (
+                      <Pressable
+                        key={key}
+                        style={({ pressed }) => [
+                          styles.suggestRow,
+                          pressed && styles.suggestRowPressed,
+                          selectedItemRow === key && styles.suggestRowSelected,
+                        ]}
+                        onPress={() => {
+                          setSelectedItemRow(key);
+                          void addToCartByBarcode(item.barcode);
+                        }}
+                      >
+                        <Text style={styles.listName}>{item.name}</Text>
+                        <Text style={styles.listMeta}>
+                          {item.barcode} | Stock: {Number(item.stock || 0)} | Price: {Number(item.price || 0)}
+                          {inCartQty > 0 ? ` | In cart: ${inCartQty}` : ""}
+                        </Text>
+                      </Pressable>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </View>
+          ) : null}
+
           <TextInput
-            style={[styles.input, { flex: 1 }]}
-            value={barcode}
-            onChangeText={setBarcode}
-            placeholder="Barcode"
+            style={styles.input}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search product"
           />
-          <Pressable style={styles.action} onPress={() => void addToCartByBarcode(barcode)}>
-            <Text style={styles.actionText}>Add</Text>
-          </Pressable>
-        </View>
-        {barcodeSuggestions.length > 0 ? (
-          <View style={styles.suggestBox}>
-            {barcodeSuggestions.map((item) => {
-              const inCartQty = getCartQty(item.barcode);
-              return (
-                <Pressable
-                  key={String(item.id || item.barcode)}
-                  style={styles.suggestRow}
-                  onPress={() => void addToCartByBarcode(item.barcode)}
-                >
+          <FlatList
+            data={filteredProducts}
+            keyExtractor={(item) => String(item.id || item.barcode)}
+            scrollEnabled={false}
+            renderItem={({ item }) => (
+              <Pressable style={styles.listRow} onPress={() => void addToCartByBarcode(item.barcode)}>
+                <View>
                   <Text style={styles.listName}>{item.name}</Text>
                   <Text style={styles.listMeta}>
                     {item.barcode} | Stock: {Number(item.stock || 0)} | Price: {Number(item.price || 0)}
-                    {inCartQty > 0 ? ` | In cart: ${inCartQty}` : ""}
                   </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-        <TextInput
-          style={styles.input}
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search product"
-        />
-        <FlatList
-          data={filteredProducts}
-          keyExtractor={(item) => String(item.id || item.barcode)}
-          scrollEnabled={false}
-          renderItem={({ item }) => (
-            <Pressable style={styles.listRow} onPress={() => void addToCartByBarcode(item.barcode)}>
-              <View>
-                <Text style={styles.listName}>{item.name}</Text>
-                <Text style={styles.listMeta}>
-                  {item.barcode} | Stock: {Number(item.stock || 0)} | Price: {Number(item.price || 0)}
-                </Text>
-              </View>
-            </Pressable>
-          )}
-        />
-      </View>
+                </View>
+              </Pressable>
+            )}
+          />
+        </View>
 
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Customer</Text>
-        <TextInput style={styles.input} value={customerName} onChangeText={setCustomerName} placeholder="Name (optional)" />
-        <TextInput style={styles.input} value={customerPhone} onChangeText={setCustomerPhone} placeholder="Phone" />
-        <TextInput style={styles.input} value={customerAddress} onChangeText={setCustomerAddress} placeholder="Address" />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.customerStrip}>
-            {customers.slice(0, 12).map((customer) => (
-              <Pressable key={customer.id} style={styles.customerChip} onPress={() => useCustomer(customer)}>
-                <Text style={styles.customerChipText}>{customer.name}</Text>
+        <View style={[styles.panel, { zIndex: 10 }]}>
+          <Text style={styles.panelTitle}>Customer</Text>
+          <TextInput
+            style={styles.input}
+            value={customerName}
+            onChangeText={(v) => {
+              setCustomerName(v);
+              setSelectedCustomerId(null);
+              setShowCustomerNameDropdown(true);
+              setShowItemDropdown(false);
+              setShowCustomerPhoneDropdown(false);
+            }}
+            onFocus={() => {
+              setShowCustomerNameDropdown(true);
+              setShowItemDropdown(false);
+              setShowCustomerPhoneDropdown(false);
+            }}
+            placeholder="Name (optional)"
+          />
+          {showCustomerNameDropdown ? (
+            <View style={styles.suggestBox}>
+              <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }}>
+                {customerNameSuggestions.length === 0 ? (
+                  <Text style={styles.suggestEmpty}>No customers found</Text>
+                ) : (
+                  customerNameSuggestions.map((customer) => (
+                    <Pressable
+                      key={customer.id}
+                      style={({ pressed }) => [
+                        styles.suggestRow,
+                        pressed && styles.suggestRowPressed,
+                        selectedCustomerRow === customer.id && styles.suggestRowSelected,
+                      ]}
+                      onPress={() => chooseCustomer(customer)}
+                    >
+                      <Text style={styles.listName}>{customer.name}</Text>
+                      <Text style={styles.listMeta}>{customer.phone || "-"} | {customer.address || "-"}</Text>
+                    </Pressable>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          <TextInput
+            style={styles.input}
+            value={customerPhone}
+            onChangeText={(v) => {
+              setCustomerPhone(v);
+              setSelectedCustomerId(null);
+              setShowCustomerPhoneDropdown(true);
+              setShowItemDropdown(false);
+              setShowCustomerNameDropdown(false);
+            }}
+            onFocus={() => {
+              setShowCustomerPhoneDropdown(true);
+              setShowItemDropdown(false);
+              setShowCustomerNameDropdown(false);
+            }}
+            placeholder="Phone"
+          />
+          {showCustomerPhoneDropdown ? (
+            <View style={styles.suggestBox}>
+              <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }}>
+                {customerPhoneSuggestions.length === 0 ? (
+                  <Text style={styles.suggestEmpty}>No customers found</Text>
+                ) : (
+                  customerPhoneSuggestions.map((customer) => (
+                    <Pressable
+                      key={customer.id}
+                      style={({ pressed }) => [
+                        styles.suggestRow,
+                        pressed && styles.suggestRowPressed,
+                        selectedCustomerRow === customer.id && styles.suggestRowSelected,
+                      ]}
+                      onPress={() => chooseCustomer(customer)}
+                    >
+                      <Text style={styles.listName}>{customer.name}</Text>
+                      <Text style={styles.listMeta}>{customer.phone || "-"} | {customer.address || "-"}</Text>
+                    </Pressable>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          <TextInput style={styles.input} value={customerAddress} onChangeText={setCustomerAddress} placeholder="Address" />
+          <Text style={styles.customerOutLine}>Customer Outstanding: {Math.round(customerOutstandingNow)}</Text>
+          <Text style={styles.customerOutLine}>After This Sale: {Math.round(customerOutstandingAfterSale)}</Text>
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Cart</Text>
+          <FlatList
+            data={cart}
+            keyExtractor={(item) => String(item.barcode)}
+            scrollEnabled={false}
+            renderItem={({ item }) => (
+              <CartRow item={item} onQtyChange={changeQty} onRemove={removeItem} />
+            )}
+            ListEmptyComponent={<Text style={styles.empty}>Cart is empty</Text>}
+          />
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Payment</Text>
+          <Text style={styles.meta}>Payment method</Text>
+          <View style={styles.inline}>
+            {["cash", "card", "credit", "check"].map((method) => (
+              <Pressable
+                key={method}
+                style={[styles.methodChip, paymentMethod === method && styles.methodChipActive]}
+                onPress={() => {
+                  setPaymentMethod(method);
+                  if (method === "credit") setCashReceived("");
+                }}
+              >
+                <Text style={[styles.methodText, paymentMethod === method && styles.methodTextActive]}>{method}</Text>
               </Pressable>
             ))}
           </View>
-        </ScrollView>
-      </View>
 
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Cart</Text>
-        <FlatList
-          data={cart}
-          keyExtractor={(item) => String(item.barcode)}
-          scrollEnabled={false}
-          renderItem={({ item }) => (
-            <CartRow item={item} onQtyChange={changeQty} onRemove={removeItem} />
-          )}
-          ListEmptyComponent={<Text style={styles.empty}>Cart is empty</Text>}
-        />
-      </View>
+          {paymentMethod !== "credit" ? (
+            <>
+              <Text style={[styles.meta, { marginTop: 8 }]}>Cash Received</Text>
+              <TextInput
+                style={styles.input}
+                value={cashReceived}
+                onChangeText={setCashReceived}
+                placeholder="Enter received cash"
+                keyboardType="numeric"
+              />
+            </>
+          ) : null}
 
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Payment</Text>
-        <Text style={styles.meta}>Payment method</Text>
-        <View style={styles.inline}>
-          {["cash", "card", "credit", "check"].map((method) => (
-            <Pressable
-              key={method}
-              style={[styles.methodChip, paymentMethod === method && styles.methodChipActive]}
-              onPress={() => setPaymentMethod(method)}
-            >
-              <Text style={[styles.methodText, paymentMethod === method && styles.methodTextActive]}>{method}</Text>
-            </Pressable>
-          ))}
+          <Text style={[styles.meta, { marginTop: 8 }]}>Discount</Text>
+          <View style={styles.inline}>
+            {["none", "amount", "percent"].map((type) => (
+              <Pressable
+                key={type}
+                style={[styles.methodChip, discountType === type && styles.methodChipActive]}
+                onPress={() => setDiscountType(type)}
+              >
+                <Text style={[styles.methodText, discountType === type && styles.methodTextActive]}>{type}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <TextInput
+            style={styles.input}
+            value={discountValue}
+            onChangeText={setDiscountValue}
+            editable={discountType !== "none"}
+            placeholder={discountType === "percent" ? "Percent" : "Amount"}
+            keyboardType="numeric"
+          />
+
+          <Text style={styles.total}>Subtotal: {Math.round(subtotal)}</Text>
+          <Text style={styles.total}>Discount: {Math.round(discountAmount)}</Text>
+          <Text style={styles.grandTotal}>Bill Total: {Math.round(billTotal)}</Text>
+          <Text style={styles.total}>Cash Received: {Math.round(normalizedCashReceived)}</Text>
+          <Text style={styles.total}>This Sale Outstanding: {Math.round(saleOutstanding)}</Text>
+          <Pressable style={styles.completeButton} onPress={completeSale}>
+            <Text style={styles.completeText}>Complete Sale</Text>
+          </Pressable>
         </View>
+      </ScrollView>
 
-        <Text style={[styles.meta, { marginTop: 8 }]}>Discount</Text>
-        <View style={styles.inline}>
-          {["none", "amount", "percent"].map((type) => (
-            <Pressable
-              key={type}
-              style={[styles.methodChip, discountType === type && styles.methodChipActive]}
-              onPress={() => setDiscountType(type)}
-            >
-              <Text style={[styles.methodText, discountType === type && styles.methodTextActive]}>{type}</Text>
-            </Pressable>
-          ))}
+      <Modal visible={showPrintPreview} transparent animationType="fade" onRequestClose={() => setShowPrintPreview(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Print Preview</Text>
+            <ScrollView style={styles.previewBox}>
+              <Text style={styles.previewText}>{buildReceiptText(lastReceipt)}</Text>
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <Pressable style={styles.action} onPress={onPrintReceipt}>
+                <Text style={styles.actionText}>Print</Text>
+              </Pressable>
+              <Pressable style={styles.closeBtn} onPress={() => setShowPrintPreview(false)}>
+                <Text style={styles.closeBtnText}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
-        <TextInput
-          style={styles.input}
-          value={discountValue}
-          onChangeText={setDiscountValue}
-          editable={discountType !== "none"}
-          placeholder={discountType === "percent" ? "Percent" : "Amount"}
-          keyboardType="numeric"
-        />
-
-        <Text style={styles.total}>Subtotal: {Math.round(subtotal)}</Text>
-        <Text style={styles.total}>Discount: {Math.round(discountAmount)}</Text>
-        <Text style={styles.grandTotal}>Grand Total: {Math.round(total)}</Text>
-        <Pressable style={styles.completeButton} onPress={completeSale}>
-          <Text style={styles.completeText}>Complete Sale</Text>
-        </Pressable>
-      </View>
-    </ScrollView>
+      </Modal>
+    </View>
   );
 }
 
@@ -441,6 +746,11 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
   },
+  dropdownBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "transparent",
+    zIndex: 1,
+  },
   suggestBox: {
     borderWidth: 1,
     borderColor: "#d1d5db",
@@ -448,12 +758,23 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     marginBottom: 8,
     overflow: "hidden",
+    zIndex: 30,
   },
   suggestRow: {
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderBottomColor: "#f1f5f9",
     borderBottomWidth: 1,
+  },
+  suggestRowPressed: {
+    backgroundColor: "#e0e7ff",
+  },
+  suggestRowSelected: {
+    backgroundColor: "#dbeafe",
+  },
+  suggestEmpty: {
+    padding: 10,
+    color: "#6b7280",
   },
   listRow: {
     paddingVertical: 8,
@@ -468,23 +789,10 @@ const styles = StyleSheet.create({
     color: "#4b5563",
     fontSize: 12,
   },
-  customerStrip: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 2,
-    marginBottom: 2,
-  },
-  customerChip: {
-    backgroundColor: "#eef2ff",
-    borderColor: "#c7d2fe",
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  customerChipText: {
-    color: "#3730a3",
+  customerOutLine: {
+    color: "#1f2937",
     fontWeight: "600",
+    marginBottom: 4,
   },
   cartRow: {
     flexDirection: "row",
@@ -505,7 +813,7 @@ const styles = StyleSheet.create({
   qtyBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   qtyButton: {
     width: 28,
@@ -515,14 +823,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#e5e7eb",
   },
+  qtyInput: {
+    width: 44,
+    height: 30,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 6,
+    textAlign: "center",
+    backgroundColor: "#fff",
+    paddingVertical: 0,
+  },
   qtyButtonText: {
     fontWeight: "700",
     color: "#111827",
-  },
-  qtyValue: {
-    minWidth: 20,
-    textAlign: "center",
-    fontWeight: "700",
   },
   rowTotal: {
     fontWeight: "700",
@@ -586,5 +899,51 @@ const styles = StyleSheet.create({
   },
   empty: {
     color: "#6b7280",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    padding: 16,
+  },
+  modalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 12,
+    maxHeight: "80%",
+  },
+  modalTitle: {
+    fontWeight: "700",
+    fontSize: 18,
+    color: "#111827",
+    marginBottom: 8,
+  },
+  previewBox: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  previewText: {
+    fontFamily: "monospace",
+    color: "#111827",
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  closeBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  closeBtnText: {
+    color: "#374151",
+    fontWeight: "700",
   },
 });

@@ -583,7 +583,7 @@ app.delete("/customers/:id", auth, requireAnyRole("admin", "cashier"), async (re
 
 // Create a sale (cashier/admin)
 app.post("/sales", auth, async (req: AuthedRequest, res) => {
-  const { items, customer, paymentMethod, discountType, discountValue } = req.body || {};
+  const { items, customer, paymentMethod, discountType, discountValue, cashReceived } = req.body || {};
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "No items provided" });
@@ -632,6 +632,14 @@ if (customer && typeof customer === "object") {
       const dt = dtRaw === "amount" || dtRaw === "percent" || dtRaw === "none" ? dtRaw : "none";
       const dv = Number(discountValue || 0);
       const safeDv = Number.isFinite(dv) ? dv : 0;
+      const hasCashReceivedInput =
+        cashReceived !== undefined &&
+        cashReceived !== null &&
+        String(cashReceived).trim() !== "";
+      const parsedCashReceived = Number(cashReceived || 0);
+      const safeCashReceivedInput = Number.isFinite(parsedCashReceived)
+        ? Math.max(0, parsedCashReceived)
+        : 0;
 
       const newSale = await tx.sale.create({
         data: {
@@ -717,11 +725,25 @@ if (customer && typeof customer === "object") {
         saleDisc = Math.round((subtotal * pct) / 100);
       }
       const finalTotal = Math.max(0, subtotal - saleDisc);
+      let finalCashReceived = 0;
+      let finalOutstanding = 0;
+      if (pm === "credit") {
+        finalCashReceived = 0;
+        finalOutstanding = finalTotal;
+      } else if (pm === "cash") {
+        finalCashReceived = hasCashReceivedInput ? safeCashReceivedInput : finalTotal;
+        finalOutstanding = Math.max(0, finalTotal - finalCashReceived);
+      } else {
+        finalCashReceived = 0;
+        finalOutstanding = 0;
+      }
 
       return tx.sale.update({
         where: { id: newSale.id },
         data: {
           total: new Prisma.Decimal(finalTotal),
+          cashReceived: new Prisma.Decimal(finalCashReceived),
+          outstanding: new Prisma.Decimal(finalOutstanding),
           discountType: dt,
           discountValue: new Prisma.Decimal(safeDv),
         },
@@ -774,7 +796,7 @@ app.put("/sales/:id", auth, adminOnly, async (req: AuthedRequest, res) => {
   const saleId = Number(req.params.id);
   if (!Number.isFinite(saleId)) return res.status(400).json({ error: "Invalid sale id" });
 
-  const { items, paymentMethod, discountType, discountValue } = req.body || {};
+  const { items, paymentMethod, discountType, discountValue, cashReceived } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "items array is required" });
   }
@@ -817,6 +839,14 @@ app.put("/sales/:id", auth, adminOnly, async (req: AuthedRequest, res) => {
       const dt = dtRaw === "amount" || dtRaw === "percent" || dtRaw === "none" ? dtRaw : "none";
       const dv = Number(discountValue ?? sale.discountValue ?? 0);
       const safeDv = Number.isFinite(dv) ? dv : 0;
+      const hasCashReceivedInput =
+        cashReceived !== undefined &&
+        cashReceived !== null &&
+        String(cashReceived).trim() !== "";
+      const parsedCashReceived = Number(cashReceived || 0);
+      const safeCashReceivedInput = Number.isFinite(parsedCashReceived)
+        ? Math.max(0, parsedCashReceived)
+        : 0;
 
       const existingById = new Map<number, any>();
       for (const si of sale.saleItems) existingById.set(si.id, si);
@@ -901,12 +931,28 @@ app.put("/sales/:id", auth, adminOnly, async (req: AuthedRequest, res) => {
         saleDisc = Math.round((subtotal * pct) / 100);
       }
       const newTotalNum = Math.max(0, subtotal - saleDisc);
+      let finalCashReceived = 0;
+      let finalOutstanding = 0;
+      if (pm === "credit") {
+        finalCashReceived = 0;
+        finalOutstanding = newTotalNum;
+      } else if (pm === "cash") {
+        finalCashReceived = hasCashReceivedInput
+          ? safeCashReceivedInput
+          : Math.max(0, Number(sale.cashReceived || newTotalNum));
+        finalOutstanding = Math.max(0, newTotalNum - finalCashReceived);
+      } else {
+        finalCashReceived = 0;
+        finalOutstanding = 0;
+      }
 
 
       const finalSale = await tx.sale.update({
         where: { id: saleId },
         data: {
           total: new Prisma.Decimal(newTotalNum),
+          cashReceived: new Prisma.Decimal(finalCashReceived),
+          outstanding: new Prisma.Decimal(finalOutstanding),
           paymentMethod: pm,
           discountType: dt,
           discountValue: new Prisma.Decimal(safeDv),
@@ -1179,8 +1225,11 @@ app.get("/reports/stock", auth, async (req, res) => {
 // Customer outstanding (credit sales per customer)
 app.get("/reports/customer-outstanding", auth, async (req, res) => {
   try {
-    const creditSales = await prisma.sale.findMany({
-      where: { paymentMethod: "credit", customerId: { not: null } },
+    const outstandingSales = await prisma.sale.findMany({
+      where: {
+        customerId: { not: null },
+        outstanding: { gt: 0 },
+      },
       include: { customer: true },
     });
 
@@ -1189,7 +1238,7 @@ app.get("/reports/customer-outstanding", auth, async (req, res) => {
       { customerId: string; name: string; phone: string; address: string; outstanding: number }
     >();
 
-    for (const s of creditSales) {
+    for (const s of outstandingSales) {
       if (!s.customerId || !s.customer) continue;
       const key = s.customerId;
       const existing = map.get(key) || {
@@ -1199,7 +1248,7 @@ app.get("/reports/customer-outstanding", auth, async (req, res) => {
         address: s.customer.address || "",
         outstanding: 0,
       };
-      existing.outstanding += Number(s.total || 0);
+      existing.outstanding += Number(s.outstanding || 0);
       map.set(key, existing);
     }
 

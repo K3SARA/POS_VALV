@@ -10,9 +10,25 @@ import CashierScreen from "./src/screens/CashierScreen";
 import ProductsScreen from "./src/screens/ProductsScreen";
 import SalesScreen from "./src/screens/SalesScreen";
 import AdminScreen from "./src/screens/AdminScreen";
+import CustomersScreen from "./src/screens/CustomersScreen";
 
 const Tabs = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+
+function TabIcon({ routeName, focused }) {
+  const icons = {
+    Admin: "🛡️",
+    Cashier: "🧾",
+    Products: "📦",
+    Sales: "📊",
+    Customers: "👥",
+  };
+  return (
+    <Text style={{ fontSize: 16, opacity: focused ? 1 : 0.6 }}>
+      {icons[routeName] || "•"}
+    </Text>
+  );
+}
 
 function HeaderRightLogout() {
   const { logout } = useAuth();
@@ -27,13 +43,17 @@ function HeaderRightLogout() {
 function CashierTabs() {
   return (
     <Tabs.Navigator
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerRight: () => <HeaderRightLogout />,
         tabBarActiveTintColor: "#1d4ed8",
-      }}
+        tabBarIcon: ({ focused }) => (
+          <TabIcon focused={focused} routeName={route.name} />
+        ),
+      })}
     >
       <Tabs.Screen name="Cashier" component={CashierScreen} />
       <Tabs.Screen name="Products" component={ProductsScreen} />
+      <Tabs.Screen name="Customers" component={CustomersScreen} />
       <Tabs.Screen name="Sales" component={SalesScreen} />
     </Tabs.Navigator>
   );
@@ -42,14 +62,18 @@ function CashierTabs() {
 function AdminTabs() {
   return (
     <Tabs.Navigator
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerRight: () => <HeaderRightLogout />,
         tabBarActiveTintColor: "#1d4ed8",
-      }}
+        tabBarIcon: ({ focused }) => (
+          <TabIcon focused={focused} routeName={route.name} />
+        ),
+      })}
     >
       <Tabs.Screen name="Admin" component={AdminScreen} />
       <Tabs.Screen name="Cashier" component={CashierScreen} />
       <Tabs.Screen name="Products" component={ProductsScreen} />
+      <Tabs.Screen name="Customers" component={CustomersScreen} />
       <Tabs.Screen name="Sales" component={SalesScreen} />
     </Tabs.Navigator>
   );

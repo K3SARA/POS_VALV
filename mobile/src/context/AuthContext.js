@@ -1,18 +1,20 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { apiFetch, clearSession, getRole, getToken, setSession } from "../api/client";
+import { apiFetch, clearSession, getRole, getToken, getUsername, setSession } from "../api/client";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);
   const [role, setRole] = useState(null);
+  const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
-      const [savedToken, savedRole] = await Promise.all([getToken(), getRole()]);
+      const [savedToken, savedRole, savedUsername] = await Promise.all([getToken(), getRole(), getUsername()]);
       setToken(savedToken);
       setRole(savedRole);
+      setUsername(savedUsername || "");
       setLoading(false);
     }
 
@@ -38,31 +40,35 @@ export function AuthProvider({ children }) {
     }
 
     const nextRole = data?.user?.role || data?.role;
+    const nextUsername = data?.user?.username || username;
     if (!data?.token || !nextRole) {
       throw new Error("Invalid login response");
     }
 
-    await setSession(data.token, nextRole);
+    await setSession(data.token, nextRole, nextUsername);
     setToken(data.token);
     setRole(nextRole);
+    setUsername(nextUsername || "");
   }
 
   async function logout() {
     await clearSession();
     setToken(null);
     setRole(null);
+    setUsername("");
   }
 
   const value = useMemo(
     () => ({
       token,
       role,
+      username,
       loading,
       login,
       logout,
       isAuthed: Boolean(token),
     }),
-    [token, role, loading]
+    [token, role, username, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

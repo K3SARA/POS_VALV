@@ -11,7 +11,7 @@ export async function getToken() {
   return AsyncStorage.getItem("token");
 }
 
-export async function setSession(token, role) {
+export async function setSession(token, role, username) {
   if (token) {
     await AsyncStorage.setItem("token", token);
   } else {
@@ -23,14 +23,24 @@ export async function setSession(token, role) {
   } else {
     await AsyncStorage.removeItem("role");
   }
+
+  if (username) {
+    await AsyncStorage.setItem("username", username);
+  } else {
+    await AsyncStorage.removeItem("username");
+  }
 }
 
 export async function getRole() {
   return AsyncStorage.getItem("role");
 }
 
+export async function getUsername() {
+  return AsyncStorage.getItem("username");
+}
+
 export async function clearSession() {
-  await AsyncStorage.multiRemove(["token", "role"]);
+  await AsyncStorage.multiRemove(["token", "role", "username"]);
 }
 
 export async function apiFetch(path, options = {}) {

@@ -51,6 +51,8 @@ model Sale {
   id        Int      @id @default(autoincrement())
   
   total     Decimal
+  cashReceived Decimal @default(0)
+  outstanding Decimal @default(0)
   paymentMethod String @default("cash")
   discountType String  @default("none")
   discountValue Decimal @default(0)
