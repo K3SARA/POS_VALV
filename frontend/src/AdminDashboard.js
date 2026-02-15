@@ -70,7 +70,6 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
   const [routes, setRoutes] = useState([]);
   const [newRouteName, setNewRouteName] = useState("");
   const [liveCashierDays, setLiveCashierDays] = useState([]);
-  const [fastMode, setFastMode] = useState(true);
   const [productsLoaded, setProductsLoaded] = useState(false);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [analyticsLoaded, setAnalyticsLoaded] = useState(false);
@@ -141,27 +140,28 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
     }
   }, []);
 
- const loadCustomers = async () => {
-  try {
-    const [data, outstanding] = await Promise.all([
-      apiFetch("/customers/all"),
-      apiFetch("/reports/customer-outstanding"),
-    ]);
+  const loadCustomers = useCallback(async () => {
+    try {
+      const [data, outstanding] = await Promise.all([
+        apiFetch("/customers/all"),
+        apiFetch("/reports/customer-outstanding"),
+      ]);
 
-    setCustomers(Array.isArray(data) ? data : []);
-    const map = {};
-    (outstanding?.rows || []).forEach((row) => {
-      if (row?.customerId) {
-        map[row.customerId] = Number(row.outstanding || 0);
-      }
-    });
-    setCustomerOutstanding(map);
-  } catch (e) {
-    console.error(e);
-    setCustomers([]);
-    setCustomerOutstanding({});
-  }
-};
+      setCustomers(Array.isArray(data) ? data : []);
+      const map = {};
+      (outstanding?.rows || []).forEach((row) => {
+        if (row?.customerId) {
+          map[row.customerId] = Number(row.outstanding || 0);
+        }
+      });
+      setCustomerOutstanding(map);
+      setCustomersLoaded(true);
+    } catch (e) {
+      console.error(e);
+      setCustomers([]);
+      setCustomerOutstanding({});
+    }
+  }, []);
 
 
   const loadAnalytics = useCallback(async () => {
@@ -220,14 +220,12 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
   }, [loadRoutes, loadLiveCashierDays]);
 
   useEffect(() => {
-    if (!fastMode) {
-      if (!productsLoaded) loadProducts(0);
-      if (!usersLoaded) loadUsers();
-      if (!analyticsLoaded) loadAnalytics();
-      if (!salesLoaded) loadSales();
-      if (!customersLoaded) loadCustomers();
-    }
-  }, [fastMode, productsLoaded, usersLoaded, analyticsLoaded, salesLoaded, customersLoaded, loadProducts, loadUsers, loadAnalytics, loadSales, loadCustomers]);
+    if (!productsLoaded) loadProducts(0);
+    if (!usersLoaded) loadUsers();
+    if (!analyticsLoaded) loadAnalytics();
+    if (!salesLoaded) loadSales();
+    if (!customersLoaded) loadCustomers();
+  }, [productsLoaded, usersLoaded, analyticsLoaded, salesLoaded, customersLoaded, loadProducts, loadUsers, loadAnalytics, loadSales, loadCustomers]);
 
   const visibleProducts = useMemo(() => {
     const normalize = (v) => String(v ?? "").toLowerCase();
@@ -852,21 +850,6 @@ const createCustomer = async (e) => {
             <button className="btn" onClick={onLogout}>Logout</button>
           </div>
         </div>
-
-
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <input
-            id="fast-mode"
-            type="checkbox"
-            checked={fastMode}
-            onChange={(e) => setFastMode(e.target.checked)}
-          />
-          <label htmlFor="fast-mode" style={{ fontSize: 12, color: "var(--muted)" }}>
-            Fast Mode (load heavy data only when needed)
-          </label>
-        </div>
-      
-
         {msg && <div className="banner">{msg}</div>}
 
         {showLowStock && (
@@ -962,9 +945,9 @@ const createCustomer = async (e) => {
               </div>
             </div>
 
-            {!analyticsLoaded && fastMode ? (
+            {!analyticsLoaded ? (
               <div style={{ color: "var(--text)", fontSize: 12 }}>
-                Analytics is paused to keep startup fast. Click “Load Analytics” when needed.
+                Loading analytics...
               </div>
             ) : (
               <>
@@ -1057,9 +1040,9 @@ const createCustomer = async (e) => {
               </div>
             </div>
 
-            {!salesLoaded && fastMode ? (
+            {!salesLoaded ? (
               <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                Sales are paused to keep startup fast. Click "Load Sales" when needed.
+                Loading sales...
               </div>
             ) : (
               <table>
@@ -1304,9 +1287,9 @@ const createCustomer = async (e) => {
               </div>
             </div>
 
-            {!customersLoaded && fastMode ? (
+            {!customersLoaded ? (
               <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                Customers are paused to keep startup fast. Click "Load Customers" when needed.
+                Loading customers...
               </div>
             ) : (
               <table>
@@ -1364,9 +1347,9 @@ const createCustomer = async (e) => {
               </div>
             </div>
 
-            {!usersLoaded && fastMode ? (
+            {!usersLoaded ? (
               <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                Users are paused to keep startup fast. Click “Load Users” when needed.
+                Loading users...
               </div>
             ) : (
               <table>
