@@ -3,7 +3,7 @@ import React from "react";
 export default function ReceiptPrint(props) {
   const {
     layout = {},
-    companyName = layout.companyName || "Plus Vision",
+    companyName = layout.companyName || "Apex Logistics",
     layoutMode = "3inch", // "3inch" | "a4"
     headerLines = Array.isArray(layout.headerLines) ? layout.headerLines : [],
     footerLines = Array.isArray(layout.footerLines) ? layout.footerLines : [],

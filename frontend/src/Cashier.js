@@ -20,7 +20,7 @@ export default function Cashier({ onLogout }) {
   const [printPaperPrompt, setPrintPaperPrompt] = useState(false);
   const [printLayoutMode, setPrintLayoutMode] = useState("3inch");
   const DEFAULT_BILL_LAYOUT = {
-    companyName: "Plus Vision",
+    companyName: "Apex Logistics",
     headerText: "Aluviharaya, Matale\nMobile: +94770654279\nThank you! Visit again",
     footerText: "Powered by POS",
     showItemsHeading: true,

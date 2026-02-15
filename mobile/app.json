@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "POS Mobile",
+    "name": "Apex Logistics",
     "slug": "pos-mobile",
     "version": "1.0.0",
+    "icon": "./assets/logo.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
@@ -13,6 +14,7 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#f4f4f5"
       },
       "package": "com.posgrocery.mobile"

@@ -43,7 +43,7 @@ export default function SalesHistory() {
 
   const getBillLayoutFromStorage = () => {
     const DEFAULT_BILL_LAYOUT = {
-      companyName: "Plus Vision",
+      companyName: "Apex Logistics",
       headerText: "Aluviharaya, Matale\nMobile: +94770654279\nThank you! Visit again",
       footerText: "Powered by POS",
       showItemsHeading: true,
