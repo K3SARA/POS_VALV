@@ -723,7 +723,11 @@ const createCustomer = async (e) => {
         }
 
         tbody tr:hover {
-          background: rgba(255, 255, 255, 0.04);
+          background: #ffffff;
+          color: #000000;
+        }
+        tbody tr:hover td {
+          color: #000000;
         }
 
         .reports-wrap {
