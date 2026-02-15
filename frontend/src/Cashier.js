@@ -6,6 +6,7 @@ import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
 
 export default function Cashier({ onLogout }) {
   const role = localStorage.getItem("role");
+  const requiresStartDay = role === "cashier";
 
   const navigate = useNavigate();
 
@@ -49,6 +50,11 @@ export default function Cashier({ onLogout }) {
   const [showDraftDropdown, setShowDraftDropdown] = useState(false);
   const autoDraftSavedRef = useRef(false);
   const [cart, setCart] = useState([]);
+  const [dayStarted, setDayStarted] = useState(!requiresStartDay);
+  const [dayStatusLoading, setDayStatusLoading] = useState(requiresStartDay);
+  const [dayRoute, setDayRoute] = useState("");
+  const [routes, setRoutes] = useState([]);
+  const [routeInput, setRouteInput] = useState("");
 
 
   // Customer (optional)
@@ -314,6 +320,51 @@ export default function Cashier({ onLogout }) {
 
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!requiresStartDay) {
+      setDayStarted(true);
+      setDayStatusLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadDayStatus = async () => {
+      setDayStatusLoading(true);
+      try {
+        const [status, routeRows] = await Promise.all([
+          apiFetch("/cashier/day/status"),
+          apiFetch("/routes"),
+        ]);
+        if (cancelled) return;
+        const started = Boolean(status?.started);
+        const activeRoutes = Array.isArray(routeRows)
+          ? routeRows.filter((r) => Boolean(r?.isActive))
+          : [];
+        const currentRoute = String(status?.session?.route || "");
+
+        setDayStarted(started);
+        setDayRoute(currentRoute);
+        setRoutes(activeRoutes);
+        setRouteInput(currentRoute);
+      } catch (e) {
+        if (cancelled) return;
+        setDayStarted(false);
+        setDayRoute("");
+        setRoutes([]);
+        setRouteInput("");
+        setMsg("Error: " + e.message);
+      } finally {
+        if (!cancelled) setDayStatusLoading(false);
+      }
+    };
+
+    loadDayStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [requiresStartDay]);
 
   const getLineBase = (i) => {
     const price = Number(String(i.price).replace(/,/g, ""));
@@ -663,7 +714,54 @@ export default function Cashier({ onLogout }) {
   const nameRegex = /^[A-Za-z\s]+$/;
   const digitsOnly = (value) => String(value || "").replace(/\D/g, "");
 
+  const startDay = async () => {
+    const route = String(routeInput || "").trim();
+    if (!route) {
+      setMsg("Route is required");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setMsg("");
+      const data = await apiFetch("/cashier/day/start", {
+        method: "POST",
+        body: JSON.stringify({ route }),
+      });
+      const startedRoute = String(data?.session?.route || route);
+      setDayStarted(true);
+      setDayRoute(startedRoute);
+      setRouteInput(startedRoute);
+      setMsg(`Day started (${startedRoute})`);
+    } catch (e) {
+      setMsg("Error: " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const endDay = async () => {
+    try {
+      setLoading(true);
+      setMsg("");
+      await apiFetch("/cashier/day/end", { method: "POST" });
+      setDayStarted(false);
+      setDayRoute("");
+      setRouteInput("");
+      setMsg("Day ended");
+    } catch (e) {
+      setMsg("Error: " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const completeSale = async () => {
+    if (requiresStartDay && !dayStarted) {
+      setMsg("Start day is required before billing");
+      return;
+    }
+
     if (cart.length === 0) {
       setMsg("??? Cart is empty");
       return;
@@ -790,6 +888,53 @@ export default function Cashier({ onLogout }) {
       <button onClick={() => navigate("/returns")} style={{ padding: 10, fontSize: 16 }}>
         Returns
       </button>
+
+      {requiresStartDay && (
+        <div
+          style={{
+            marginTop: 12,
+            border: "1px solid #ddd",
+            borderRadius: 10,
+            padding: 10,
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <b>
+            {dayStatusLoading
+              ? "Checking day status..."
+              : dayStarted
+                ? `Day Started - Route: ${dayRoute || "-"}`
+                : "Day Not Started"}
+          </b>
+          {!dayStarted && (
+            <select
+              value={routeInput}
+              onChange={(e) => setRouteInput(e.target.value)}
+              disabled={loading || dayStatusLoading}
+              style={{ padding: 8, minWidth: 200 }}
+            >
+              <option value="">Select route</option>
+              {routes.map((r) => (
+                <option key={r.id || r.name} value={r.name}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {!dayStarted ? (
+            <button onClick={startDay} disabled={loading || dayStatusLoading || !routeInput} style={{ padding: 8 }}>
+              Start Day
+            </button>
+          ) : (
+            <button onClick={endDay} disabled={loading || dayStatusLoading} style={{ padding: 8 }}>
+              End Day
+            </button>
+          )}
+        </div>
+      )}
 
       {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
 
@@ -1298,7 +1443,8 @@ export default function Cashier({ onLogout }) {
           disabled={
             loading ||
             cart.length === 0 ||
-            (customerEnabled && digitsOnly(customerPhone).length !== 10)
+            (customerEnabled && digitsOnly(customerPhone).length !== 10) ||
+            (requiresStartDay && !dayStarted)
           }
           style={{ padding: 12, fontSize: 16 }}
         >

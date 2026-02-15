@@ -67,6 +67,10 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState("cashier");
   const [roleEdits, setRoleEdits] = useState({});
+  const [routes, setRoutes] = useState([]);
+  const [newRouteName, setNewRouteName] = useState("");
+  const [liveCashierDays, setLiveCashierDays] = useState([]);
+  const [fastMode, setFastMode] = useState(true);
   const [productsLoaded, setProductsLoaded] = useState(false);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [analyticsLoaded, setAnalyticsLoaded] = useState(false);
@@ -119,28 +123,45 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
     }
   }, []);
 
-  const loadCustomers = useCallback(async () => {
+  const loadRoutes = useCallback(async () => {
     try {
-      const [data, outstanding] = await Promise.all([
-        apiFetch("/customers/all"),
-        apiFetch("/reports/customer-outstanding"),
-      ]);
-
-      setCustomers(Array.isArray(data) ? data : []);
-      const map = {};
-      (outstanding?.rows || []).forEach((row) => {
-        if (row?.customerId) {
-          map[row.customerId] = Number(row.outstanding || 0);
-        }
-      });
-      setCustomerOutstanding(map);
-      setCustomersLoaded(true);
+      const data = await apiFetch("/routes");
+      setRoutes(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.error(e);
-      setCustomers([]);
-      setCustomerOutstanding({});
+      setRoutes([]);
     }
   }, []);
+
+  const loadLiveCashierDays = useCallback(async () => {
+    try {
+      const data = await apiFetch("/admin/cashier/day/live");
+      setLiveCashierDays(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setLiveCashierDays([]);
+    }
+  }, []);
+
+ const loadCustomers = async () => {
+  try {
+    const [data, outstanding] = await Promise.all([
+      apiFetch("/customers/all"),
+      apiFetch("/reports/customer-outstanding"),
+    ]);
+
+    setCustomers(Array.isArray(data) ? data : []);
+    const map = {};
+    (outstanding?.rows || []).forEach((row) => {
+      if (row?.customerId) {
+        map[row.customerId] = Number(row.outstanding || 0);
+      }
+    });
+    setCustomerOutstanding(map);
+  } catch (e) {
+    console.error(e);
+    setCustomers([]);
+    setCustomerOutstanding({});
+  }
+};
 
 
   const loadAnalytics = useCallback(async () => {
@@ -192,12 +213,21 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
   }, [loadSummary]);
 
   useEffect(() => {
-    if (!productsLoaded) loadProducts(0);
-    if (!usersLoaded) loadUsers();
-    if (!analyticsLoaded) loadAnalytics();
-    if (!salesLoaded) loadSales();
-    if (!customersLoaded) loadCustomers();
-  }, [productsLoaded, usersLoaded, analyticsLoaded, salesLoaded, customersLoaded, loadProducts, loadUsers, loadAnalytics, loadSales, loadCustomers]);
+    loadRoutes();
+    loadLiveCashierDays();
+    const timer = setInterval(loadLiveCashierDays, 30000);
+    return () => clearInterval(timer);
+  }, [loadRoutes, loadLiveCashierDays]);
+
+  useEffect(() => {
+    if (!fastMode) {
+      if (!productsLoaded) loadProducts(0);
+      if (!usersLoaded) loadUsers();
+      if (!analyticsLoaded) loadAnalytics();
+      if (!salesLoaded) loadSales();
+      if (!customersLoaded) loadCustomers();
+    }
+  }, [fastMode, productsLoaded, usersLoaded, analyticsLoaded, salesLoaded, customersLoaded, loadProducts, loadUsers, loadAnalytics, loadSales, loadCustomers]);
 
   const visibleProducts = useMemo(() => {
     const normalize = (v) => String(v ?? "").toLowerCase();
@@ -335,7 +365,7 @@ invoicePhoto: newInvoicePhoto || null,
   const nameRegex = /^[A-Za-z\s]+$/;
   const digitsOnly = (value) => String(value || "").replace(/\D/g, "");
 
-  const createCustomer = async (e) => {
+const createCustomer = async (e) => {
     e.preventDefault();
     setMsg("");
     const name = customerName.trim();
@@ -404,6 +434,40 @@ invoicePhoto: newInvoicePhoto || null,
     setMsg("Error: " + e.message);
   }
 };
+
+  const createRoute = async (e) => {
+    e.preventDefault();
+    const name = String(newRouteName || "").trim();
+    if (!name) {
+      setMsg("Route name is required");
+      return;
+    }
+
+    try {
+      await apiFetch("/admin/routes", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      setNewRouteName("");
+      setMsg("Route created");
+      await loadRoutes();
+    } catch (e) {
+      setMsg("Error: " + e.message);
+    }
+  };
+
+  const toggleRoute = async (route) => {
+    try {
+      await apiFetch(`/admin/routes/${route.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ isActive: !route.isActive }),
+      });
+      setMsg(`Route ${!route.isActive ? "enabled" : "disabled"}`);
+      await loadRoutes();
+    } catch (e) {
+      setMsg("Error: " + e.message);
+    }
+  };
 
 
   const deleteUser = async (userId) => {
@@ -783,10 +847,25 @@ invoicePhoto: newInvoicePhoto || null,
                 </div>
               )}
             </div>
+            <button className="btn secondary" onClick={() => navigate("/end-day")}>End Day</button>
             <button className="btn ghost" onClick={() => navigate("/billing")}>Billing</button>
             <button className="btn" onClick={onLogout}>Logout</button>
           </div>
         </div>
+
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <input
+            id="fast-mode"
+            type="checkbox"
+            checked={fastMode}
+            onChange={(e) => setFastMode(e.target.checked)}
+          />
+          <label htmlFor="fast-mode" style={{ fontSize: 12, color: "var(--muted)" }}>
+            Fast Mode (load heavy data only when needed)
+          </label>
+        </div>
+      
 
         {msg && <div className="banner">{msg}</div>}
 
@@ -883,9 +962,9 @@ invoicePhoto: newInvoicePhoto || null,
               </div>
             </div>
 
-            {!analyticsLoaded ? (
+            {!analyticsLoaded && fastMode ? (
               <div style={{ color: "var(--text)", fontSize: 12 }}>
-                Loading analytics...
+                Analytics is paused to keep startup fast. Click “Load Analytics” when needed.
               </div>
             ) : (
               <>
@@ -978,9 +1057,9 @@ invoicePhoto: newInvoicePhoto || null,
               </div>
             </div>
 
-            {!salesLoaded ? (
+            {!salesLoaded && fastMode ? (
               <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                Loading sales...
+                Sales are paused to keep startup fast. Click "Load Sales" when needed.
               </div>
             ) : (
               <table>
@@ -1123,6 +1202,44 @@ invoicePhoto: newInvoicePhoto || null,
             </form>
           </div>
 
+          <div className={`panel ${printPanelId === "routes" ? "print-panel-area" : ""}`}>
+            <h3>Routes (Admin Only)</h3>
+            <div style={{ marginBottom: 8 }}>
+              <button className="btn secondary print-hide" type="button" onClick={() => handlePrintPanel("routes")}>
+                Print
+              </button>
+            </div>
+            <form className="form" onSubmit={createRoute}>
+              <div className="input-group">
+                <label>Route Name</label>
+                <input
+                  value={newRouteName}
+                  onChange={(e) => setNewRouteName(e.target.value)}
+                  placeholder="Add new route"
+                  required
+                />
+              </div>
+              <button className="btn" type="submit" disabled={loading}>Add Route</button>
+            </form>
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              {routes.length === 0 && <div style={{ color: "var(--muted)", fontSize: 12 }}>No routes created yet.</div>}
+              {routes.map((r) => (
+                <div
+                  key={r.id || r.name}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{r.name}</div>
+                    <div style={{ color: "var(--muted)", fontSize: 12 }}>{r.isActive ? "Active" : "Inactive"}</div>
+                  </div>
+                  <button className="btn secondary" type="button" onClick={() => toggleRoute(r)} disabled={loading}>
+                    {r.isActive ? "Disable" : "Enable"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className={`panel ${printPanelId === "add-customer" ? "print-panel-area" : ""}`}>
             <h3>Add Customer</h3>
             <div style={{ marginBottom: 8 }}>
@@ -1187,9 +1304,9 @@ invoicePhoto: newInvoicePhoto || null,
               </div>
             </div>
 
-            {!customersLoaded ? (
+            {!customersLoaded && fastMode ? (
               <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                Loading customers...
+                Customers are paused to keep startup fast. Click "Load Customers" when needed.
               </div>
             ) : (
               <table>
@@ -1247,9 +1364,9 @@ invoicePhoto: newInvoicePhoto || null,
               </div>
             </div>
 
-            {!usersLoaded ? (
+            {!usersLoaded && fastMode ? (
               <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                Loading users...
+                Users are paused to keep startup fast. Click “Load Users” when needed.
               </div>
             ) : (
               <table>
@@ -1297,6 +1414,50 @@ invoicePhoto: newInvoicePhoto || null,
                 </tbody>
               </table>
             )}
+          </div>
+
+          <div className={`panel panel-wide ${printPanelId === "live-cashiers" ? "print-panel-area" : ""}`}>
+            <div className="table-tools">
+              <div>
+                <h3 style={{ margin: 0 }}>Live Cashier Days</h3>
+                <span style={{ color: "var(--muted)", fontSize: 12 }}>
+                  Who has started day and selected route
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn secondary print-hide" type="button" onClick={() => handlePrintPanel("live-cashiers")}>
+                  Print
+                </button>
+                <button className="btn secondary print-hide" type="button" onClick={loadLiveCashierDays} disabled={loading}>
+                  Refresh Live Status
+                </button>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Cashier</th>
+                  <th>Route</th>
+                  <th>Started</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liveCashierDays.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.user?.username || "-"}</td>
+                    <td>{row.route || row.routeRef?.name || "-"}</td>
+                    <td>{row.startedAt ? new Date(row.startedAt).toLocaleString() : "-"}</td>
+                  </tr>
+                ))}
+                {liveCashierDays.length === 0 && (
+                  <tr>
+                    <td colSpan="3" style={{ textAlign: "center", padding: 16 }}>
+                      No active cashier days
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
