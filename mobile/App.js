@@ -10,6 +10,7 @@ import LoginScreen from "./src/screens/LoginScreen";
 import CashierScreen from "./src/screens/CashierScreen";
 import ProductsScreen from "./src/screens/ProductsScreen";
 import SalesScreen from "./src/screens/SalesScreen";
+import ReturnsScreen from "./src/screens/ReturnsScreen";
 import AdminScreen from "./src/screens/AdminScreen";
 import CustomersScreen from "./src/screens/CustomersScreen";
 import RoutesScreen from "./src/screens/RoutesScreen";
@@ -28,6 +29,7 @@ function TabIcon({ routeName, focused }) {
     Products: "cube-outline",
     Sales: "bar-chart-outline",
     Customers: "people-outline",
+    Returns: "refresh-circle-outline",
   };
   return (
     <Ionicons
@@ -62,6 +64,7 @@ function CashierTabs() {
       <Tabs.Screen name="Cashier" component={CashierScreen} />
       <Tabs.Screen name="Products" component={ProductsScreen} />
       <Tabs.Screen name="Customers" component={CustomersScreen} />
+      <Tabs.Screen name="Returns" component={ReturnsScreen} />
       <Tabs.Screen name="Sales" component={SalesScreen} />
     </Tabs.Navigator>
   );
@@ -80,6 +83,7 @@ function AdminTabs() {
     { key: "Cashier", label: "Cashier", icon: "receipt-outline" },
     { key: "Products", label: "Products", icon: "cube-outline" },
     { key: "Customers", label: "Customers", icon: "people-outline" },
+    { key: "Returns", label: "Returns", icon: "refresh-circle-outline" },
     { key: "Sales", label: "Sales", icon: "bar-chart-outline" },
   ];
 
@@ -104,6 +108,8 @@ function AdminTabs() {
         return <ProductsScreen />;
       case "Customers":
         return <CustomersScreen />;
+      case "Returns":
+        return <ReturnsScreen />;
       case "Sales":
         return <SalesScreen />;
       case "Admin":

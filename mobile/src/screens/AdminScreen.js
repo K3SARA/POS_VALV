@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiFetch } from "../api/client";
 
 function Metric({ label, value, onPress }) {
@@ -13,6 +14,7 @@ function Metric({ label, value, onPress }) {
 }
 
 export default function AdminScreen() {
+  const insets = useSafeAreaInsets();
   const [summary, setSummary] = useState(null);
   const [users, setUsers] = useState([]);
   const [creditAlerts, setCreditAlerts] = useState([]);
@@ -89,7 +91,7 @@ export default function AdminScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 16 }}>
+      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 20 + insets.bottom + 70 }}>
         <Text style={styles.heading}>Admin Dashboard</Text>
         {loading ? <ActivityIndicator style={{ marginBottom: 10 }} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}

@@ -55,9 +55,14 @@ function buildReceiptText(receipt) {
     "------------------------",
   ];
   (receipt.items || []).forEach((item) => {
-    const lineTotal = Number(item.qty || 0) * Number(item.price || 0);
+    const paidQty = Number(item.qty || 0);
+    const freeQty = Number(item.freeQty || 0);
+    const lineTotal = paidQty * Number(item.price || 0);
     lines.push(`${item.name} (${item.barcode})`);
-    lines.push(`  ${item.qty} x ${Math.round(Number(item.price || 0))} = ${Math.round(lineTotal)}`);
+    lines.push(`  ${paidQty} x ${Math.round(Number(item.price || 0))} = ${Math.round(lineTotal)}`);
+    if (freeQty > 0) {
+      lines.push(`  Free Qty: ${freeQty}`);
+    }
   });
   lines.push("------------------------");
   lines.push(`Subtotal: ${Math.round(receipt.subtotal)}`);
@@ -69,37 +74,58 @@ function buildReceiptText(receipt) {
   return lines.join("\n");
 }
 
-function CartRow({ item, onQtyChange, onRemove }) {
+function CartRow({ item, onQtyChange, onFreeQtyChange, onRemove }) {
   const qty = Number(item.qty || 0);
+  const freeQty = Number(item.freeQty || 0);
   const price = Number(item.price || 0);
   const total = qty * price;
 
   return (
     <View style={styles.cartRow}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.cartName}>{item.name}</Text>
-        <Text style={styles.cartMeta}>Barcode: {item.barcode}</Text>
-        <Text style={styles.cartMeta}>Price: {Math.round(price)}</Text>
+      <View style={styles.cartTop}>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text style={styles.cartName} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.cartMeta} numberOfLines={1}>Barcode: {item.barcode}</Text>
+          <Text style={styles.cartMeta}>Price: {Math.round(price)}</Text>
+        </View>
+        <View style={styles.cartAmountBox}>
+          <Text style={styles.rowTotal}>{Math.round(total)}</Text>
+          <Pressable onPress={() => onRemove(item.barcode)}>
+            <Text style={styles.remove}>Remove</Text>
+          </Pressable>
+        </View>
       </View>
-      <View style={styles.qtyBox}>
-        <Pressable style={styles.qtyButton} onPress={() => onQtyChange(item.barcode, Math.max(1, qty - 1))}>
-          <Text style={styles.qtyButtonText}>-</Text>
-        </Pressable>
-        <TextInput
-          value={String(qty)}
-          onChangeText={(v) => onQtyChange(item.barcode, Number(v || 0))}
-          keyboardType="numeric"
-          style={styles.qtyInput}
-        />
-        <Pressable style={styles.qtyButton} onPress={() => onQtyChange(item.barcode, qty + 1)}>
-          <Text style={styles.qtyButtonText}>+</Text>
-        </Pressable>
-      </View>
-      <View style={{ alignItems: "flex-end", width: 88 }}>
-        <Text style={styles.rowTotal}>{Math.round(total)}</Text>
-        <Pressable onPress={() => onRemove(item.barcode)}>
-          <Text style={styles.remove}>Remove</Text>
-        </Pressable>
+      <View style={styles.cartControls}>
+        <View style={styles.qtyBox}>
+          <Text style={styles.freeLabel}>Qty</Text>
+          <Pressable style={styles.qtyButton} onPress={() => onQtyChange(item.barcode, Math.max(1, qty - 1))}>
+            <Text style={styles.qtyButtonText}>-</Text>
+          </Pressable>
+          <TextInput
+            value={String(qty)}
+            onChangeText={(v) => onQtyChange(item.barcode, Number(v || 0))}
+            keyboardType="numeric"
+            style={styles.qtyInput}
+          />
+          <Pressable style={styles.qtyButton} onPress={() => onQtyChange(item.barcode, qty + 1)}>
+            <Text style={styles.qtyButtonText}>+</Text>
+          </Pressable>
+        </View>
+        <View style={styles.freeQtyBox}>
+          <Text style={styles.freeLabel}>Free</Text>
+          <Pressable style={styles.qtyButton} onPress={() => onFreeQtyChange(item.barcode, Math.max(0, freeQty - 1))}>
+            <Text style={styles.qtyButtonText}>-</Text>
+          </Pressable>
+          <TextInput
+            value={String(freeQty)}
+            onChangeText={(v) => onFreeQtyChange(item.barcode, Number(v || 0))}
+            keyboardType="numeric"
+            style={styles.qtyInput}
+          />
+          <Pressable style={styles.qtyButton} onPress={() => onFreeQtyChange(item.barcode, freeQty + 1)}>
+            <Text style={styles.qtyButtonText}>+</Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -303,7 +329,7 @@ export default function CashierScreen() {
 
   function getCartQty(code) {
     return cart.reduce((sum, item) => {
-      if (item.barcode === code) return sum + Number(item.qty || 0);
+      if (item.barcode === code) return sum + Number(item.qty || 0) + Number(item.freeQty || 0);
       return sum;
     }, 0);
   }
@@ -402,7 +428,7 @@ export default function CashierScreen() {
           item.barcode === product.barcode ? { ...item, qty: item.qty + 1 } : item
         );
       }
-      return [...prev, { ...product, qty: 1 }];
+      return [...prev, { ...product, qty: 1, freeQty: 0 }];
     });
     setBarcode("");
     setError("");
@@ -415,11 +441,28 @@ export default function CashierScreen() {
     if (!Number.isFinite(qty) || qty < 1) return;
     const product = products.find((p) => p.barcode === code);
     const stock = Number(product?.stock || 0);
-    if (qty > stock) {
+    const existing = cart.find((item) => item.barcode === code);
+    const freeQty = Number(existing?.freeQty || 0);
+    if (qty + freeQty > stock) {
       setError(`Only ${stock} available for ${code}`);
       return;
     }
     setCart((prev) => prev.map((item) => (item.barcode === code ? { ...item, qty } : item)));
+  }
+
+  function changeFreeQty(code, nextQty) {
+    if (!ensureDayStartedForAction()) return;
+    const qty = Number(nextQty || 0);
+    if (!Number.isFinite(qty) || qty < 0) return;
+    const existing = cart.find((item) => item.barcode === code);
+    const paidQty = Number(existing?.qty || 0);
+    const product = products.find((p) => p.barcode === code);
+    const stock = Number(product?.stock || 0);
+    if (paidQty + qty > stock) {
+      setError(`Only ${stock} available for ${code}`);
+      return;
+    }
+    setCart((prev) => prev.map((item) => (item.barcode === code ? { ...item, freeQty: qty } : item)));
   }
 
   function removeItem(code) {
@@ -479,6 +522,7 @@ export default function CashierScreen() {
         items: cart.map((item) => ({
           barcode: item.barcode,
           qty: Number(item.qty || 0),
+          freeQty: Number(item.freeQty || 0),
         })),
         paymentMethod,
         discountType,
@@ -830,6 +874,7 @@ export default function CashierScreen() {
                 key={String(item.barcode)}
                 item={item}
                 onQtyChange={changeQty}
+                onFreeQtyChange={changeFreeQty}
                 onRemove={removeItem}
               />
             ))
@@ -1146,25 +1191,40 @@ const styles = StyleSheet.create({
     color: "#b91c1c",
   },
   cartRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
   },
-  cartName: {
-    fontWeight: "700",
-    color: "#111827",
+  cartTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
   },
-  cartMeta: {
-    color: "#4b5563",
-    fontSize: 12,
+  cartAmountBox: {
+    alignItems: "flex-end",
+    minWidth: 72,
+  },
+  cartControls: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
   },
   qtyBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+  },
+  freeQtyBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  freeLabel: {
+    color: "#1f2937",
+    fontWeight: "600",
+    minWidth: 34,
   },
   qtyButton: {
     width: 28,
@@ -1196,6 +1256,17 @@ const styles = StyleSheet.create({
     color: "#b91c1c",
     fontSize: 12,
     marginTop: 2,
+  },
+  cartRowLegacy: {
+    paddingVertical: 8,
+  },
+  cartName: {
+    fontWeight: "700",
+    color: "#111827",
+  },
+  cartMeta: {
+    color: "#4b5563",
+    fontSize: 12,
   },
   methodChip: {
     borderWidth: 1,

@@ -518,8 +518,9 @@ app.get("/admin/cashier/day/logs", auth, requireRole("admin"), async (req, res) 
 // Create customer (admin OR cashier)
 app.post("/customers", auth, async (req, res) => {
   try {
-    const { name, phone, address } = req.body || {};
+    const { customerId, name, phone, address } = req.body || {};
 
+    const safeCustomerId = customerId ? String(customerId).trim() : "";
     const safeName = String(name || "").trim();
     const safePhone = phone ? String(phone).trim() : null;
     const safeAddress = address ? String(address).trim() : null;
@@ -530,6 +531,7 @@ app.post("/customers", auth, async (req, res) => {
 
     const customer = await prisma.customer.create({
       data: {
+        ...(safeCustomerId ? { id: safeCustomerId } : {}),
         name: safeName,
         phone: safePhone && safePhone.length ? safePhone : null,
         address: safeAddress && safeAddress.length ? safeAddress : null,
@@ -657,6 +659,7 @@ app.post("/products", auth, requireRole("admin"), async (req, res) => {
       barcode,
       name,
       price,
+      billingPrice,
       invoicePrice,
       stock,
       supplierName,
@@ -679,14 +682,19 @@ app.post("/products", auth, requireRole("admin"), async (req, res) => {
         ? pmRaw
         : null;
 
+    const rawBilling = billingPrice !== undefined ? billingPrice : price;
+    const rawInvoice = invoicePrice !== undefined ? invoicePrice : price;
+    const safeBilling = Number(rawBilling || 0);
+    const safeInvoice = Number(rawInvoice || 0);
+
     const p = await prisma.product.create({
       data: {
         barcode: String(barcode),
         name: String(name),
-        price: new Prisma.Decimal(Number(price || 0)),
+        price: new Prisma.Decimal(safeBilling),
         invoicePrice:
-          invoicePrice !== undefined && invoicePrice !== null && String(invoicePrice).trim() !== ""
-            ? new Prisma.Decimal(Number(invoicePrice || 0))
+          rawInvoice !== undefined && rawInvoice !== null && String(rawInvoice).trim() !== ""
+            ? new Prisma.Decimal(safeInvoice)
             : null,
         stock: Number(stock || 0),
 
@@ -710,14 +718,24 @@ app.post("/products", auth, requireRole("admin"), async (req, res) => {
 // Update product (admin only)
 app.put("/products/:barcode", auth, requireRole("admin"), async (req, res) => {
   try {
-    const { name, price, stock } = req.body || {};
+    const { name, price, billingPrice, invoicePrice, stock } = req.body || {};
     const barcode = String(req.params.barcode);
 
     const updated = await prisma.product.update({
       where: { barcode },
       data: {
         ...(name !== undefined ? { name: String(name) } : {}),
-        ...(price !== undefined ? { price: new Prisma.Decimal(Number(price)) } : {}),
+        ...((billingPrice !== undefined || price !== undefined)
+          ? { price: new Prisma.Decimal(Number(billingPrice !== undefined ? billingPrice : price)) }
+          : {}),
+        ...(invoicePrice !== undefined
+          ? {
+              invoicePrice:
+                invoicePrice === null || String(invoicePrice).trim() === ""
+                  ? null
+                  : new Prisma.Decimal(Number(invoicePrice)),
+            }
+          : {}),
         ...(stock !== undefined ? { stock: Number(stock) } : {}),
       },
     });
@@ -732,7 +750,16 @@ app.put("/products/:barcode", auth, requireRole("admin"), async (req, res) => {
 // Delete product (admin only)
 app.delete("/products/:barcode", auth, requireRole("admin"), async (req, res) => {
   try {
-    await prisma.product.delete({ where: { barcode: String(req.params.barcode) } });
+    const barcode = String(req.params.barcode);
+    const product = await prisma.product.findUnique({ where: { barcode } });
+    if (!product) return res.status(404).json({ error: "Product not found" });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.returnItem.deleteMany({ where: { productId: product.id } });
+      await tx.saleItem.deleteMany({ where: { productId: product.id } });
+      await tx.product.delete({ where: { id: product.id } });
+    });
+
     res.json({ message: "Product deleted" });
   } catch (e: any) {
     res.status(400).json({ error: e.message || "Failed to delete product" });
@@ -763,7 +790,7 @@ app.get("/customers", auth, requireAnyRole("admin", "cashier"), async (req, res)
 
 app.get("/customers/:id", auth, requireAnyRole("admin", "cashier"), async (req, res) => {
   const id = String(req.params.id);
-  if (!Number.isFinite(id)) {
+  if (!id) {
     return res.status(400).json({ error: "Invalid customer id" });
   }
 
@@ -776,13 +803,15 @@ app.get("/customers/:id", auth, requireAnyRole("admin", "cashier"), async (req, 
 
 app.post("/customers", auth, requireAnyRole("admin", "cashier"), async (req, res) => {
   try {
-    const { name, phone, email, address, notes } = req.body || {};
+    const { customerId, name, phone, email, address, notes } = req.body || {};
     if (!name || String(name).trim().length < 2) {
       return res.status(400).json({ error: "Customer name is required" });
     }
 
+    const safeCustomerId = customerId ? String(customerId).trim() : "";
     const created = await prisma.customer.create({
   data: {
+    ...(safeCustomerId ? { id: safeCustomerId } : {}),
     name: String(name).trim(),
     phone: phone ? String(phone).trim() : null,
     address: address ? String(address).trim() : null,
@@ -799,7 +828,7 @@ app.post("/customers", auth, requireAnyRole("admin", "cashier"), async (req, res
 app.put("/customers/:id", auth, requireAnyRole("admin", "cashier"), async (req, res) => {
   try {
     const id = String(req.params.id);
-    if (!Number.isFinite(id)) {
+    if (!id) {
       return res.status(400).json({ error: "Invalid customer id" });
     }
 
@@ -1022,7 +1051,7 @@ if (customer && typeof customer === "object") {
           discountValue: new Prisma.Decimal(safeDv),
         },
       });
-    });
+    }, { timeout: 20000, maxWait: 10000 });
 
     return res.status(201).json({ message: "Sale completed", sale });
   } catch (e: any) {
@@ -1743,13 +1772,21 @@ app.post("/returns", auth, async (req: AuthedRequest, res) => {
     const normalized = items
       .map((it: any) => ({
         saleItemId: Number(it.saleItemId),
-        qty: Number(it.qty),
+        qty: Number(it.qty || 0),
+        freeQty: Number(it.freeQty || 0),
       }))
-      .filter((x: any) => Number.isFinite(x.saleItemId) && Number.isFinite(x.qty) && x.qty > 0);
+      .filter((x: any) =>
+        Number.isFinite(x.saleItemId) &&
+        Number.isFinite(x.qty) &&
+        Number.isFinite(x.freeQty) &&
+        x.qty >= 0 &&
+        x.freeQty >= 0 &&
+        (x.qty > 0 || x.freeQty > 0)
+      );
 
     if (normalized.length === 0) return res.status(400).json({ error: "invalid items" });
 
-    const created = await prisma.$transaction(async (tx) => {
+    const createdReturnId = await prisma.$transaction(async (tx) => {
       const sale = await tx.sale.findUnique({
         where: { id: Number(saleId) },
         include: { saleItems: true },
@@ -1779,19 +1816,33 @@ app.post("/returns", auth, async (req: AuthedRequest, res) => {
 
         const returnedAgg = await tx.returnItem.aggregate({
           where: { saleItemId: saleItem.id },
-          _sum: { qty: true },
+          _sum: { qty: true, lineTotal: true },
         });
-        const alreadyReturned = Number(returnedAgg._sum.qty || 0);
-        const remainingQty = Number(saleItem.qty) - alreadyReturned;
+        const alreadyReturnedUnits = Number(returnedAgg._sum.qty || 0);
+        const paidUnitPrice = Number(saleItem.price || 0);
+        const alreadyReturnedPaid =
+          paidUnitPrice > 0
+            ? Number(returnedAgg._sum.lineTotal || 0) / paidUnitPrice
+            : alreadyReturnedUnits;
 
-        if (remainingQty <= 0) {
+        const totalSoldUnits = Number(saleItem.qty || 0) + Number(saleItem.freeQty || 0);
+        const remainingUnits = totalSoldUnits - alreadyReturnedUnits;
+        const remainingPaidUnits = Number(saleItem.qty || 0) - alreadyReturnedPaid;
+        const returnPaidUnits = Math.max(0, Number(it.qty || 0));
+        const returnFreeUnits = Math.max(0, Number(it.freeQty || 0));
+        const returnTotalUnits = returnPaidUnits + returnFreeUnits;
+
+        if (remainingUnits <= 0) {
           throw new Error("All quantity for this item has already been returned");
         }
-        if (it.qty > remainingQty) {
+        if (returnTotalUnits > remainingUnits) {
           throw new Error("Return qty exceeds remaining qty");
         }
+        if (returnPaidUnits > remainingPaidUnits) {
+          throw new Error("Return paid qty exceeds remaining paid qty");
+        }
 
-        const lineTotal = Number(saleItem.price) * it.qty;
+        const lineTotal = Number(saleItem.price) * returnPaidUnits;
         totalRefund += lineTotal;
 
         await tx.returnItem.create({
@@ -1799,7 +1850,7 @@ app.post("/returns", auth, async (req: AuthedRequest, res) => {
             returnId: r.id,
             saleItemId: saleItem.id,
             productId: saleItem.productId,
-            qty: it.qty,
+            qty: returnTotalUnits,
             price: saleItem.price,
             lineTotal: new Prisma.Decimal(lineTotal),
           },
@@ -1808,33 +1859,41 @@ app.post("/returns", auth, async (req: AuthedRequest, res) => {
         if (r.returnToStock) {
           await tx.product.update({
             where: { id: saleItem.productId },
-            data: { stock: { increment: it.qty } },
+            data: { stock: { increment: returnTotalUnits } },
           });
         } else {
           await tx.product.update({
             where: { id: saleItem.productId },
-            data: { damagedStock: { increment: it.qty } },
+            data: { damagedStock: { increment: returnTotalUnits } },
           });
         }
       }
 
-      const updatedReturn = await tx.saleReturn.update({
+      await tx.saleReturn.update({
         where: { id: r.id },
         data: { totalRefund: new Prisma.Decimal(totalRefund) },
-        include: {
-          sale: true,
-          createdBy: { select: { id: true, username: true, role: true } },
-          items: {
-            include: {
-              product: true,
-              saleItem: true,
-            },
-          },
-        },
       });
 
-      return updatedReturn;
+      return r.id;
+    }, { maxWait: 10000, timeout: 20000 });
+
+    const created = await prisma.saleReturn.findUnique({
+      where: { id: createdReturnId },
+      include: {
+        sale: true,
+        createdBy: { select: { id: true, username: true, role: true } },
+        items: {
+          include: {
+            product: true,
+            saleItem: true,
+          },
+        },
+      },
     });
+
+    if (!created) {
+      return res.status(500).json({ error: "Failed to load created return" });
+    }
 
     return res.json(created);
   } catch (e: any) {
@@ -1905,7 +1964,7 @@ app.put("/returns/:id", auth, async (req: AuthedRequest, res) => {
     const finalReason = reasonText || type;
     const restock = type !== "DAMAGED_EXPIRED";
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updatedReturnId = await prisma.$transaction(async (tx) => {
       const existing = await tx.saleReturn.findUnique({
         where: { id },
         include: { items: true },
@@ -1934,21 +1993,30 @@ app.put("/returns/:id", auth, async (req: AuthedRequest, res) => {
         }
       }
 
-      return tx.saleReturn.update({
+      const updatedReturn = await tx.saleReturn.update({
         where: { id },
         data: { reason: finalReason, returnToStock: restock },
-        include: {
-          sale: { include: { customer: true } },
-          createdBy: { select: { id: true, username: true, role: true } },
-          items: {
-            include: {
-              product: true,
-              saleItem: true,
-            },
+      });
+      return updatedReturn.id;
+    }, { maxWait: 10000, timeout: 20000 });
+
+    const updated = await prisma.saleReturn.findUnique({
+      where: { id: updatedReturnId },
+      include: {
+        sale: { include: { customer: true } },
+        createdBy: { select: { id: true, username: true, role: true } },
+        items: {
+          include: {
+            product: true,
+            saleItem: true,
           },
         },
-      });
+      },
     });
+
+    if (!updated) {
+      return res.status(500).json({ error: "Failed to load updated return" });
+    }
 
     return res.json(updated);
   } catch (e: any) {
