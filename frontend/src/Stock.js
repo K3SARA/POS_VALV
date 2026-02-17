@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "./api";
 import { formatNumber } from "./utils/format";
@@ -393,7 +393,7 @@ export default function Stock() {
                         ) : (
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             <button className="btn secondary" type="button" onClick={() => startEdit(p)}>Edit</button>
-                            <button className="btn ghost" type="button" onClick={() => deleteProduct(p.barcode)}>Delete</button>
+                            <button className="btn secondary" type="button" onClick={() => deleteProduct(p.barcode)}>Delete</button>
                           </div>
                         )
                       ) : (

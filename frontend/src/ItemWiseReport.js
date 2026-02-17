@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./api";
 import { formatNumber } from "./utils/format";
 import { useNavigate } from "react-router-dom";

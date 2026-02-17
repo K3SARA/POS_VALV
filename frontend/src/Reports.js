@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { useNavigate } from "react-router-dom";
 import { apiFetch, getRole } from "./api";
@@ -33,7 +33,7 @@ const [viewErr, setViewErr] = useState("");
 const [viewPrintPrompt, setViewPrintPrompt] = useState(false);
 const [viewPrintLayoutMode, setViewPrintLayoutMode] = useState("3inch");
 const [selectedSales, setSelectedSales] = useState({});
-const [printStockOnly, setPrintStockOnly] = useState(false);
+const [printStockOnly] = useState(false);
   const [printPanelId, setPrintPanelId] = useState("");
 
   const [customerOutstanding, setCustomerOutstanding] = useState([]);
@@ -449,7 +449,7 @@ const closeEdit = () => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <h2 style={{ margin: 0 }}>Reports</h2>
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => navigate("/admin")} style={{ padding: 10 }}>ðŸ  Home</button>
+          <button onClick={() => navigate("/admin")} style={{ padding: 10 }}>🏠 Home</button>
           <div ref={reportsMenuRef} style={{ position: "relative" }}>
             <button onClick={() => setShowReportsMenu((v) => !v)} style={{ padding: 10 }}>Reports</button>
             {showReportsMenu && (
@@ -515,9 +515,9 @@ const closeEdit = () => {
       </div>
 
       <div className={`print-panel-area ${printPanelId === "sales-list" ? "print-panel-area" : ""}`} style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <h3 style={{ marginTop: 0 }}>Sales List</h3>
-          <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "nowrap", marginBottom: 8 }}>
+          <h3 style={{ margin: 0, lineHeight: 1.1 }}>Sales List</h3>
+          <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
             <button onClick={() => handlePrintPanel("sales-list")} className="print-hide" style={{ padding: 8 }}>
               Print
             </button>
@@ -530,61 +530,83 @@ const closeEdit = () => {
         {filtered.length === 0 ? (
           <p style={{ color: "#666" }}>No sales in this range.</p>
         ) : (
-          <table border="1" cellPadding="8" style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead style={{ color: "#000" }}>
-              <tr>
-                <th>Select</th>
-                <th>Date</th>
-                <th>Sale ID</th>
-                <th>Customer name</th>
-                <th>Address</th>
-                <th>Bill value</th>
-                {role === "admin" && <th>Action</th>}
-              </tr>
-            </thead>
-
-            <tbody>
-              {filtered.map((s) => (
-                <tr key={s.id}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(selectedSales[s.id])}
-                      onChange={(e) =>
-                        setSelectedSales((prev) => ({ ...prev, [s.id]: e.target.checked }))
-                      }
-                    />
-                  </td>
-                  <td>{new Date(s.createdAt).toLocaleString()}</td>
-                  <td>{s.id}</td>
-                  <td>{s.customerName || s.customer?.name || "Walk-in"}</td>
-                  <td>{s.customerAddress || s.customer?.address || "-"}</td>
-                  <td>Rs {formatNumber(s.total)}</td>
-                  {role === "admin" && (
-                    <td style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => openEdit(s.id)} style={{ padding: "6px 10px" }}>
-                        Edit
-                      </button>
-                      <button onClick={() => openView(s.id)} style={{ padding: "6px 10px" }}>
-                        View
-                      </button>
-                      <button
-                        onClick={() => deleteSale(s.id)}
-                        style={{
-                          padding: "6px 10px",
-                          background: "#fee2e2",
-                          color: "#991b1b",
-                          border: "1px solid #991b1b",
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  )}
+          <div
+            style={{
+              maxHeight: 285,
+              overflowY: "auto",
+              overflowX: "hidden",
+              border: "1px solid #ddd",
+              scrollbarWidth: "thin",
+              scrollbarGutter: "stable",
+              paddingRight: 6,
+            }}
+          >
+            <table border="1" cellPadding="8" style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+              <colgroup>
+                <col style={{ width: 64 }} />
+                <col style={{ width: "10ch" }} />
+                <col style={{ width: 160 }} />
+                <col />
+                <col />
+                <col style={{ width: 110 }} />
+                {role === "admin" ? <col style={{ width: 196 }} /> : null}
+              </colgroup>
+              <thead style={{ color: "#000", position: "sticky", top: 0, zIndex: 2 }}>
+                <tr>
+                  <th style={{ whiteSpace: "nowrap" }}>Select</th>
+                  <th style={{ whiteSpace: "nowrap" }}>Sale ID</th>
+                  <th style={{ whiteSpace: "nowrap" }}>Date</th>
+                  <th>Customer name</th>
+                  <th>Address</th>
+                  <th style={{ whiteSpace: "nowrap" }}>Bill value</th>
+                  {role === "admin" && <th style={{ whiteSpace: "nowrap" }}>Action</th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map((s) => (
+                  <tr key={s.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(selectedSales[s.id])}
+                        onChange={(e) =>
+                          setSelectedSales((prev) => ({ ...prev, [s.id]: e.target.checked }))
+                        }
+                      />
+                    </td>
+                    <td style={{ whiteSpace: "nowrap" }}>{s.id}</td>
+                    <td>{new Date(s.createdAt).toLocaleString()}</td>
+                    <td>{s.customerName || s.customer?.name || "Walk-in"}</td>
+                    <td>{s.customerAddress || s.customer?.address || "-"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>Rs {formatNumber(s.total)}</td>
+                    {role === "admin" && (
+                      <td style={{ verticalAlign: "middle" }}>
+                        <div style={{ display: "flex", gap: 6, whiteSpace: "nowrap", alignItems: "center" }}>
+                          <button onClick={() => openEdit(s.id)} style={{ padding: "6px 10px" }}>
+                            Edit
+                          </button>
+                          <button onClick={() => openView(s.id)} style={{ padding: "6px 10px" }}>
+                            View
+                          </button>
+                          <button
+                            onClick={() => deleteSale(s.id)}
+                            style={{
+                              padding: "6px 10px",
+                              background: "#fee2e2",
+                              color: "#991b1b",
+                              border: "1px solid #991b1b",
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {selectedSalesList.length > 0 && (

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
 import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
@@ -66,7 +66,7 @@ export default function Returns({ onLogout }) {
   // âœ… returns list state MUST be here (top-level), not inside submitReturn
   const [returnsList, setReturnsList] = useState([]);
 
-  const saleItems = sale?.saleItems || [];
+  const saleItems = useMemo(() => sale?.saleItems || [], [sale?.saleItems]);
 
   const styles = {
     page: {

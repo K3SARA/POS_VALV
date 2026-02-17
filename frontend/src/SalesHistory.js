@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
 import ReceiptPrint from "./ReceiptPrint";

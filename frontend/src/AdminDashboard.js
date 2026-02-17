@@ -7,7 +7,6 @@ export default function AdminDashboard({ onLogout }) {
   const navigate = useNavigate();
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
-  const role = localStorage.getItem("role");
   const [newSupplierName, setNewSupplierName] = useState("");
 const [newSupplierInvoiceNo, setNewSupplierInvoiceNo] = useState("");
 const [newReceivedDate, setNewReceivedDate] = useState(() => {
@@ -20,11 +19,11 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
 
   
 
-  const [products, setProducts] = useState([]);
-  const [productsTotal, setProductsTotal] = useState(0);
+  const [, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [sales, setSales] = useState([]);
+  const [recentSalesSort, setRecentSalesSort] = useState({ key: "id", dir: "desc" });
   const [summary, setSummary] = useState({
     totalProducts: 0,
     totalStock: 0,
@@ -42,11 +41,6 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
   const [stock, setStock] = useState("");
 
   // Product list controls
-  const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState("name");
-  const [sortDir, setSortDir] = useState("asc");
-  const [editingBarcode, setEditingBarcode] = useState(null);
-  const [editValues, setEditValues] = useState({ name: "", price: "", billingPrice: "", stock: "" });
   const [page, setPage] = useState(0);
   const pageSize = 25;
 
@@ -99,7 +93,6 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
     try {
       const data = await apiFetch(`/products?limit=${pageSize}&offset=${nextPage * pageSize}`);
       setProducts(data.items || []);
-      setProductsTotal(data.total || 0);
       setPage(nextPage);
       setProductsLoaded(true);
     } catch (e) {
@@ -216,26 +209,69 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const visibleProducts = useMemo(() => {
-    const normalize = (v) => String(v ?? "").toLowerCase();
-    const q = normalize(query);
-    const filtered = products.filter((p) => {
-      if (!q) return true;
-      return normalize(p.name).includes(q) || normalize(p.barcode).includes(q);
-    });
-
-    const sorted = [...filtered].sort((a, b) => {
-      const dir = sortDir === "asc" ? 1 : -1;
-      if (sortBy === "name") {
-        return normalize(a.name).localeCompare(normalize(b.name)) * dir;
+  const sortedRecentSales = useMemo(() => {
+    const rows = [...(sales || [])];
+    rows.sort((a, b) => {
+      if (recentSalesSort.key === "id") {
+        const av = Number(a?.id || 0);
+        const bv = Number(b?.id || 0);
+        return recentSalesSort.dir === "asc" ? av - bv : bv - av;
       }
-      const aNum = Number(String(a[sortBy] ?? "").replace(/,/g, "")) || 0;
-      const bNum = Number(String(b[sortBy] ?? "").replace(/,/g, "")) || 0;
-      return (aNum - bNum) * dir;
+      if (recentSalesSort.key === "date") {
+        const av = new Date(a?.createdAt || 0).getTime();
+        const bv = new Date(b?.createdAt || 0).getTime();
+        return recentSalesSort.dir === "asc" ? av - bv : bv - av;
+      }
+      if (recentSalesSort.key === "total") {
+        const av = Number(a?.total || 0);
+        const bv = Number(b?.total || 0);
+        return recentSalesSort.dir === "asc" ? av - bv : bv - av;
+      }
+      const aCustomer = a?.customer?.name || a?.customerName || "";
+      const bCustomer = b?.customer?.name || b?.customerName || "";
+      const aPhone = a?.customer?.phone || a?.customerPhone || "";
+      const bPhone = b?.customer?.phone || b?.customerPhone || "";
+      const aAddress = a?.customer?.address || a?.customerAddress || "";
+      const bAddress = b?.customer?.address || b?.customerAddress || "";
+      let av = "";
+      let bv = "";
+      if (recentSalesSort.key === "customer") {
+        av = String(aCustomer).toLowerCase();
+        bv = String(bCustomer).toLowerCase();
+      } else if (recentSalesSort.key === "phone") {
+        av = String(aPhone).toLowerCase();
+        bv = String(bPhone).toLowerCase();
+      } else {
+        av = String(aAddress).toLowerCase();
+        bv = String(bAddress).toLowerCase();
+      }
+      if (av < bv) return recentSalesSort.dir === "asc" ? -1 : 1;
+      if (av > bv) return recentSalesSort.dir === "asc" ? 1 : -1;
+      return 0;
     });
+    return rows;
+  }, [sales, recentSalesSort]);
 
-    return sorted;
-  }, [products, query, sortBy, sortDir]);
+  const sortRecentSales = (key) => {
+    setRecentSalesSort((prev) => {
+      if (prev.key === key) {
+        return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+      }
+      return { key, dir: "asc" };
+    });
+  };
+
+  const sortMark = (key) =>
+    recentSalesSort.key === key ? (recentSalesSort.dir === "asc" ? " ▲" : " ▼") : "";
+
+  const onRecentHeaderClick = (e, key) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.nativeEvent?.stopImmediatePropagation) {
+      e.nativeEvent.stopImmediatePropagation();
+    }
+    sortRecentSales(key);
+  };
 
   const createProduct = async (e) => {
     e.preventDefault();
@@ -264,57 +300,6 @@ invoicePhoto: newInvoicePhoto || null,
       setPrice("");
       setBillingPrice("");
       setStock("");
-      await loadSummary();
-      if (productsLoaded) {
-        await loadProducts(page);
-      }
-    } catch (e) {
-      setMsg("Error: " + e.message);
-    }
-  };
-
-  const startEdit = (product) => {
-    setEditingBarcode(product.barcode);
-    setEditValues({
-      name: product.name,
-      price: product.invoicePrice ?? "",
-      billingPrice: product.price ?? "",
-      stock: product.stock,
-    });
-  };
-
-  const cancelEdit = () => {
-    setEditingBarcode(null);
-    setEditValues({ name: "", price: "", billingPrice: "", stock: "" });
-  };
-
-  const saveEdit = async (barcodeValue) => {
-    try {
-      await apiFetch(`/products/${barcodeValue}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          name: editValues.name,
-          invoicePrice: Number(editValues.price),
-          billingPrice: Number(editValues.billingPrice),
-          stock: Number(editValues.stock),
-        }),
-      });
-      setMsg("Product updated");
-      cancelEdit();
-      await loadSummary();
-      if (productsLoaded) {
-        await loadProducts(page);
-      }
-    } catch (e) {
-      setMsg("Error: " + e.message);
-    }
-  };
-
-  const deleteProduct = async (barcodeValue) => {
-    if (!window.confirm("Delete this product?")) return;
-    try {
-      await apiFetch(`/products/${barcodeValue}`, { method: "DELETE" });
-      setMsg("Product deleted");
       await loadSummary();
       if (productsLoaded) {
         await loadProducts(page);
@@ -1014,7 +999,10 @@ const createCustomer = async (e) => {
             )}
           </div>
 
-          <div className={`panel panel-wide ${printPanelId === "recent-sales" ? "print-panel-area" : ""}`}>
+          <div
+            className={`panel panel-wide ${printPanelId === "recent-sales" ? "print-panel-area" : ""}`}
+            data-no-table-enhance="1"
+          >
             <div className="table-tools">
               <div>
                 <h3 style={{ margin: 0 }}>Recent Sales (Customer Details)</h3>
@@ -1048,19 +1036,19 @@ const createCustomer = async (e) => {
                 <table style={{ tableLayout: "fixed", width: "100%" }}>
                   <thead style={{ display: "table", width: "100%", tableLayout: "fixed" }}>
                     <tr>
-                      <th>Sale #</th>
-                      <th>Date</th>
-                      <th>Customer</th>
-                      <th>Phone</th>
-                      <th>Address</th>
-                      <th>Total</th>
+                      <th style={{ cursor: "pointer" }} onClick={(e) => onRecentHeaderClick(e, "id")}>Sale #{sortMark("id")}</th>
+                      <th style={{ cursor: "pointer" }} onClick={(e) => onRecentHeaderClick(e, "date")}>Date{sortMark("date")}</th>
+                      <th style={{ cursor: "pointer" }} onClick={(e) => onRecentHeaderClick(e, "customer")}>Customer{sortMark("customer")}</th>
+                      <th style={{ cursor: "pointer" }} onClick={(e) => onRecentHeaderClick(e, "phone")}>Phone{sortMark("phone")}</th>
+                      <th style={{ cursor: "pointer" }} onClick={(e) => onRecentHeaderClick(e, "address")}>Address{sortMark("address")}</th>
+                      <th style={{ cursor: "pointer" }} onClick={(e) => onRecentHeaderClick(e, "total")}>Total{sortMark("total")}</th>
                     </tr>
                   </thead>
                 </table>
                 <div style={{ maxHeight: 260, overflowY: "auto", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                   <table style={{ tableLayout: "fixed", width: "100%" }}>
                     <tbody style={{ display: "block" }}>
-                      {(sales || []).map((s) => {
+                      {sortedRecentSales.map((s) => {
                         const customerName = s.customer?.name || s.customerName || "-";
                         const customerPhone = s.customer?.phone || s.customerPhone || "-";
                         const customerAddress = s.customer?.address || s.customerAddress || "-";

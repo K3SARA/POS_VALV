@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
 import ReceiptPrint from "./ReceiptPrint";
@@ -141,7 +141,7 @@ export default function Cashier({ onLogout }) {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const buildDraftPayload = () => ({
+  const buildDraftPayload = useCallback(() => ({
     name: draftName.trim() || null,
     cart,
     customerEnabled,
@@ -152,13 +152,13 @@ export default function Cashier({ onLogout }) {
     discountValue,
     paymentMethod,
     cashReceived,
-  });
+  }), [cart, cashReceived, customerAddress, customerEnabled, customerName, customerPhone, discountType, discountValue, draftName, paymentMethod]);
 
-  const shouldAutoSaveDraft = () => {
+  const shouldAutoSaveDraft = useCallback(() => {
     return cart.length > 0;
-  };
+  }, [cart.length]);
 
-  const autoSaveDraft = async () => {
+  const autoSaveDraft = useCallback(async () => {
     if (autoDraftSavedRef.current) return;
     if (isCompletingSaleRef.current) return;
     if (!shouldAutoSaveDraft()) return;
@@ -171,28 +171,24 @@ export default function Cashier({ onLogout }) {
     } catch {
       // silent on auto-save
     }
-  };
+  }, [buildDraftPayload, shouldAutoSaveDraft]);
 
   useEffect(() => {
     return () => {
       autoSaveDraft();
     };
-  }, [cart, customerName, customerPhone, customerAddress, discountType, discountValue, paymentMethod, cashReceived, draftName]);
+  }, [autoSaveDraft]);
 
 
 
   const [barcode, setBarcode] = useState("");
   const [qty, setQty] = useState(1);
-  const [freeIssueBarcode, setFreeIssueBarcode] = useState("");
-  const [freeIssueQty, setFreeIssueQty] = useState(1);
 
   // Item dropdown search
   const [itemResults, setItemResults] = useState([]);
   const [showItemDropdown, setShowItemDropdown] = useState(false);
   const [itemLoading, setItemLoading] = useState(false);
   const [allItems, setAllItems] = useState([]);
-  const [freeIssueResults, setFreeIssueResults] = useState([]);
-  const [showFreeIssueDropdown, setShowFreeIssueDropdown] = useState(false);
 
   const loadAllItems = async () => {
     try {
@@ -227,34 +223,10 @@ export default function Cashier({ onLogout }) {
     setShowItemDropdown(true);
   };
 
-  const filterFreeIssueItems = (text) => {
-    const q = String(text || "").trim().toLowerCase();
-    if (!q) {
-      setFreeIssueResults(allItems);
-      setShowFreeIssueDropdown(true);
-      return;
-    }
-    const filtered = allItems.filter((p) => {
-      const name = String(p.name || "").toLowerCase();
-      const barcodeText = String(p.barcode || "").toLowerCase();
-      return name.includes(q) || barcodeText.includes(q);
-    });
-    setFreeIssueResults(filtered);
-    setShowFreeIssueDropdown(true);
-  };
-
   const chooseItem = (p) => {
     setBarcode(p.barcode || "");
     setShowItemDropdown(false);
   };
-
-  const chooseFreeIssueItem = (p) => {
-    setFreeIssueBarcode(p.barcode || "");
-    setShowFreeIssueDropdown(false);
-  };
-
-  const getCartQtyByBarcode = (code) =>
-    cart.reduce((sum, i) => (i.barcode === code ? sum + Number(i.qty || 0) : sum), 0);
 
   const getFreeQtyByBarcode = (code) =>
     cart.reduce(
@@ -279,12 +251,6 @@ export default function Cashier({ onLogout }) {
     const paid = getPaidQtyByBarcode(code);
     const free = getFreeQtyByBarcode(code);
     return Math.max(0, stock - paid - free);
-  };
-
-  const getAvailableStock = (code) => {
-    const stock = getStockForBarcode(code);
-    const usedPaid = getPaidQtyByBarcode(code);
-    return Math.max(0, stock - usedPaid);
   };
 
   const getAvailableForEdit = (code, isFreeIssue, currentQty) => {
@@ -368,15 +334,15 @@ export default function Cashier({ onLogout }) {
     };
   }, [requiresStartDay]);
 
-  const getLineBase = (i) => {
+  const getLineBase = useCallback((i) => {
     const price = Number(String(i.price).replace(/,/g, ""));
     const q = Number(i.qty);
     const safePrice = Number.isFinite(price) ? price : 0;
     const safeQty = Number.isFinite(q) ? q : 0;
     return safePrice * safeQty;
-  };
+  }, []);
 
-  const getItemDiscountAmount = (i) => {
+  const getItemDiscountAmount = useCallback((i) => {
     const base = getLineBase(i);
     const t = i.itemDiscountType || "none";
     const v = Number(i.itemDiscountValue || 0);
@@ -391,7 +357,7 @@ export default function Cashier({ onLogout }) {
     }
 
     return 0;
-  };
+  }, [getLineBase]);
 
   const subtotal = useMemo(
     () =>
@@ -400,7 +366,7 @@ export default function Cashier({ onLogout }) {
         const itemDisc = getItemDiscountAmount(i);
         return sum + Math.max(0, base - itemDisc);
       }, 0),
-    [cart]
+    [cart, getItemDiscountAmount, getLineBase]
   );
 
 
@@ -525,57 +491,6 @@ export default function Cashier({ onLogout }) {
     }
   };
 
-  const addFreeIssueByBarcode = async () => {
-    setMsg("");
-    const code = freeIssueBarcode.trim();
-    const freeQty = Number(freeIssueQty);
-    if (!code || !Number.isFinite(freeQty) || freeQty < 1) return;
-
-    try {
-      setLoading(true);
-      const product = await apiFetch(`/products/${code}`);
-      const available = Math.max(0, Number(product.stock || 0) - getCartQtyByBarcode(product.barcode));
-      if (available < 1) {
-        setMsg("No stock available for free issue");
-        return;
-      }
-      if (freeQty > available) {
-        setMsg(`Only ${available} available for free issue`);
-        return;
-      }
-
-      setCart((prev) => {
-        const existing = prev.find((p) => p.barcode === product.barcode && p.freeIssue);
-        if (existing) {
-          return prev.map((p) =>
-            p.barcode === product.barcode && p.freeIssue
-              ? { ...p, qty: p.qty + freeQty }
-              : p
-          );
-        }
-        return [
-          ...prev,
-          {
-            ...product,
-            name: `${product.name} (Free)`,
-            price: 0,
-            qty: freeQty,
-            freeIssue: true,
-            itemDiscountType: "none",
-            itemDiscountValue: "",
-          },
-        ];
-      });
-
-      setFreeIssueBarcode("");
-      setFreeIssueQty(1);
-    } catch (e) {
-      setMsg("Error: " + e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const removeItem = (code, isFreeIssue) =>
     setCart((prev) =>
       prev.filter((p) => !(p.barcode === code && Boolean(p.freeIssue) === Boolean(isFreeIssue)))
@@ -625,8 +540,6 @@ export default function Cashier({ onLogout }) {
     setMsg("");
     setBarcode("");
     setQty(1);
-    setFreeIssueBarcode("");
-    setFreeIssueQty(1);
 
     setCustomerName("");
     setCustomerPhone("");
@@ -1485,7 +1398,7 @@ export default function Cashier({ onLogout }) {
           disabled={
             loading ||
             cart.length === 0 ||
-            !!customerPhone && digitsOnly(customerPhone).length !== 10 ||
+            (!!customerPhone && digitsOnly(customerPhone).length !== 10) ||
             (requiresStartDay && !dayStarted)
           }
           style={{ padding: 12, fontSize: 16 }}

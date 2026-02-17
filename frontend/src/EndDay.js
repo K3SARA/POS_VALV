@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
 
@@ -20,7 +20,7 @@ export default function EndDay() {
     navigate("/login");
   };
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setMsg("");
     try {
       setLoading(true);
@@ -33,11 +33,11 @@ export default function EndDay() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [date]);
 
   useEffect(() => {
     load();
-  }, [date]);
+  }, [load]);
 
   useEffect(() => {
     const onDocClick = (event) => {

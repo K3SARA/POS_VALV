@@ -65,6 +65,10 @@ table {
   border-collapse: collapse;
   font-size: 14px;
 }
+table th,
+table td {
+  vertical-align: middle;
+}
 thead th {
   text-align: left;
   padding: 10px;
@@ -76,6 +80,88 @@ tbody td {
   border-bottom: 1px solid #f0ede6;
 }
 tbody tr:hover { background: #fbfaf7; color: #000; }
+
+.table-enhanced-wrap {
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.table-enhanced-wrap table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.table-enhanced-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.table-sortable-th {
+  cursor: pointer;
+  user-select: none;
+}
+
+.table-sortable-th[data-sort-dir="asc"]::after {
+  content: " ▲";
+  font-size: 11px;
+}
+
+.table-sortable-th[data-sort-dir="desc"]::after {
+  content: " ▼";
+  font-size: 11px;
+}
+
+/* Keep action buttons aligned inside action cells across app tables */
+table td:last-child > div {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* Thin stable scrollbars for table wrappers and other scroll panels */
+.page div[style*="overflow"] {
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+}
+
+.page div[style*="overflow"]::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.page div[style*="overflow"]::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+}
+
+.page div[style*="overflow"]::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.68);
+  border-radius: 999px;
+}
+
+.page div[style*="overflow"]::-webkit-scrollbar-thumb:hover {
+  background: rgba(51, 65, 85, 0.82);
+}
+
+.table-enhanced-wrap::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.table-enhanced-wrap::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+}
+
+.table-enhanced-wrap::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.68);
+  border-radius: 999px;
+}
 
 .page {
   padding: 24px;
