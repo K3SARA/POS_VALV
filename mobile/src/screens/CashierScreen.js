@@ -11,8 +11,10 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { formatNumber } from "../utils/format";
 
 const OUT_PREFIX = "OUTSTANDING:";
 
@@ -59,18 +61,18 @@ function buildReceiptText(receipt) {
     const freeQty = Number(item.freeQty || 0);
     const lineTotal = paidQty * Number(item.price || 0);
     lines.push(`${item.name} (${item.barcode})`);
-    lines.push(`  ${paidQty} x ${Math.round(Number(item.price || 0))} = ${Math.round(lineTotal)}`);
+    lines.push(`  ${paidQty} x ${formatNumber(item.price || 0)} = ${formatNumber(lineTotal)}`);
     if (freeQty > 0) {
       lines.push(`  Free Qty: ${freeQty}`);
     }
   });
   lines.push("------------------------");
-  lines.push(`Subtotal: ${Math.round(receipt.subtotal)}`);
-  lines.push(`Discount: ${Math.round(receipt.discount)}`);
-  lines.push(`Bill Total: ${Math.round(receipt.total)}`);
-  lines.push(`Cash Received: ${Math.round(receipt.cashReceived)}`);
-  lines.push(`Outstanding: ${Math.round(receipt.outstanding)}`);
-  lines.push(`Customer Outstanding Now: ${Math.round(receipt.customerOutstandingNow)}`);
+  lines.push(`Subtotal: ${formatNumber(receipt.subtotal)}`);
+  lines.push(`Discount: ${formatNumber(receipt.discount)}`);
+  lines.push(`Bill Total: ${formatNumber(receipt.total)}`);
+  lines.push(`Cash Received: ${formatNumber(receipt.cashReceived)}`);
+  lines.push(`Outstanding: ${formatNumber(receipt.outstanding)}`);
+  lines.push(`Customer Outstanding Now: ${formatNumber(receipt.customerOutstandingNow)}`);
   return lines.join("\n");
 }
 
@@ -86,10 +88,10 @@ function CartRow({ item, onQtyChange, onFreeQtyChange, onRemove }) {
         <View style={{ flex: 1, paddingRight: 8 }}>
           <Text style={styles.cartName} numberOfLines={1}>{item.name}</Text>
           <Text style={styles.cartMeta} numberOfLines={1}>Barcode: {item.barcode}</Text>
-          <Text style={styles.cartMeta}>Price: {Math.round(price)}</Text>
+          <Text style={styles.cartMeta}>Price: {formatNumber(price)}</Text>
         </View>
         <View style={styles.cartAmountBox}>
-          <Text style={styles.rowTotal}>{Math.round(total)}</Text>
+          <Text style={styles.rowTotal}>{formatNumber(total)}</Text>
           <Pressable onPress={() => onRemove(item.barcode)}>
             <Text style={styles.remove}>Remove</Text>
           </Pressable>
@@ -138,7 +140,6 @@ export default function CashierScreen() {
   const [outstandingMap, setOutstandingMap] = useState({});
   const [cart, setCart] = useState([]);
   const [barcode, setBarcode] = useState("");
-  const [query, setQuery] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -155,7 +156,6 @@ export default function CashierScreen() {
   const [showCustomerPhoneDropdown, setShowCustomerPhoneDropdown] = useState(false);
   const [selectedItemRow, setSelectedItemRow] = useState("");
   const [selectedCustomerRow, setSelectedCustomerRow] = useState("");
-  const [selectedBrowseRow, setSelectedBrowseRow] = useState("");
   const [activeTouchRow, setActiveTouchRow] = useState("");
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [lastReceipt, setLastReceipt] = useState(null);
@@ -199,6 +199,12 @@ export default function CashierScreen() {
     loadData();
   }, [loadData]);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
   const loadDayStatus = useCallback(async () => {
     setDayStatusLoading(true);
     try {
@@ -234,18 +240,6 @@ export default function CashierScreen() {
     }
     loadDayStatus();
   }, [loadDayStatus, requiresStartDay]);
-
-  const filteredProducts = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return products.slice(0, 25);
-    return products
-      .filter((p) => {
-        const name = String(p.name || "").toLowerCase();
-        const code = String(p.barcode || "").toLowerCase();
-        return name.includes(q) || code.includes(q);
-      })
-      .slice(0, 25);
-  }, [products, query]);
 
   const barcodeSuggestions = useMemo(() => {
     const q = barcode.trim().toLowerCase();
@@ -444,7 +438,7 @@ export default function CashierScreen() {
     const existing = cart.find((item) => item.barcode === code);
     const freeQty = Number(existing?.freeQty || 0);
     if (qty + freeQty > stock) {
-      setError(`Only ${stock} available for ${code}`);
+      setError(`Only ${formatNumber(stock)} available for ${code}`);
       return;
     }
     setCart((prev) => prev.map((item) => (item.barcode === code ? { ...item, qty } : item)));
@@ -459,7 +453,7 @@ export default function CashierScreen() {
     const product = products.find((p) => p.barcode === code);
     const stock = Number(product?.stock || 0);
     if (paidQty + qty > stock) {
-      setError(`Only ${stock} available for ${code}`);
+      setError(`Only ${formatNumber(stock)} available for ${code}`);
       return;
     }
     setCart((prev) => prev.map((item) => (item.barcode === code ? { ...item, freeQty: qty } : item)));
@@ -648,7 +642,7 @@ export default function CashierScreen() {
               }}
               onFocus={() => setShowItemDropdown(true)}
               onBlur={() => setTimeout(() => setShowItemDropdown(false), 120)}
-              placeholder="Barcode"
+              placeholder="Barcode/Name"
               editable={canUseCashierActions}
             />
             <Pressable
@@ -694,7 +688,7 @@ export default function CashierScreen() {
                       >
                         <Text style={styles.listName}>{item.name}</Text>
                         <Text style={styles.listMeta}>
-                          {item.barcode} | Stock: {Number(item.stock || 0)} | Price: {Number(item.price || 0)}
+                          {item.barcode} | Stock: {formatNumber(item.stock || 0)} | Price: {formatNumber(item.price || 0)}
                           {inCartQty > 0 ? ` | In cart: ${inCartQty}` : ""}
                         </Text>
                       </Pressable>
@@ -705,43 +699,6 @@ export default function CashierScreen() {
             </View>
           ) : null}
 
-          <TextInput
-            style={styles.input}
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search product"
-            editable={canUseCashierActions}
-          />
-          <View style={styles.browseListWrap}>
-            <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always">
-              {filteredProducts.map((item) => {
-                const browseKey = `browse-${String(item.id || item.barcode)}`;
-                return (
-                  <Pressable
-                    key={String(item.id || item.barcode)}
-                    style={[
-                      styles.listRow,
-                      activeTouchRow === browseKey && styles.listRowPressed,
-                      selectedBrowseRow === browseKey && styles.listRowSelected,
-                    ]}
-                    onPressIn={() => setActiveTouchRow(browseKey)}
-                    onPressOut={() => setActiveTouchRow("")}
-                    onPress={() => {
-                      setSelectedBrowseRow(browseKey);
-                      void addToCartByBarcode(item.barcode);
-                    }}
-                  >
-                    <View>
-                      <Text style={styles.listName}>{item.name}</Text>
-                      <Text style={styles.listMeta}>
-                        {item.barcode} | Stock: {Number(item.stock || 0)} | Price: {Number(item.price || 0)}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
         </View>
 
         <View style={[styles.panel, { zIndex: 10 }]}>
@@ -859,9 +816,9 @@ export default function CashierScreen() {
               customerOutstandingNow > 0 ? styles.customerOutLineWarn : null,
             ]}
           >
-            Customer Outstanding: {Math.round(customerOutstandingNow)}
+            Customer Outstanding: {formatNumber(customerOutstandingNow)}
           </Text>
-          <Text style={styles.customerOutLine}>After This Sale: {Math.round(customerOutstandingAfterSale)}</Text>
+          <Text style={styles.customerOutLine}>After This Sale: {formatNumber(customerOutstandingAfterSale)}</Text>
         </View>
 
         <View style={styles.panel}>
@@ -948,11 +905,11 @@ export default function CashierScreen() {
             keyboardType="numeric"
           />
 
-          <Text style={styles.total}>Subtotal: {Math.round(subtotal)}</Text>
-          <Text style={styles.total}>Discount: {Math.round(discountAmount)}</Text>
-          <Text style={styles.grandTotal}>Bill Total: {Math.round(billTotal)}</Text>
-          <Text style={styles.total}>Cash Received: {Math.round(normalizedCashReceived)}</Text>
-          <Text style={styles.total}>This Sale Outstanding: {Math.round(saleOutstanding)}</Text>
+          <Text style={styles.total}>Subtotal: {formatNumber(subtotal)}</Text>
+          <Text style={styles.total}>Discount: {formatNumber(discountAmount)}</Text>
+          <Text style={styles.grandTotal}>Bill Total: {formatNumber(billTotal)}</Text>
+          <Text style={styles.total}>Cash Received: {formatNumber(normalizedCashReceived)}</Text>
+          <Text style={styles.total}>This Sale Outstanding: {formatNumber(saleOutstanding)}</Text>
           <Pressable
             style={[styles.completeButton, !canUseCashierActions && styles.btnDisabled]}
             onPress={completeSale}
@@ -1150,29 +1107,6 @@ const styles = StyleSheet.create({
   suggestEmpty: {
     padding: 10,
     color: "#6b7280",
-  },
-  listRow: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    borderBottomColor: "#f1f5f9",
-    borderBottomWidth: 1,
-    borderLeftWidth: 3,
-    borderLeftColor: "transparent",
-  },
-  listRowPressed: {
-    backgroundColor: "#dbeafe",
-    borderLeftColor: "#2563eb",
-  },
-  listRowSelected: {
-    backgroundColor: "#bfdbfe",
-    borderLeftColor: "#1d4ed8",
-  },
-  browseListWrap: {
-    maxHeight: 260,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 8,
-    overflow: "hidden",
   },
   listName: {
     fontWeight: "600",

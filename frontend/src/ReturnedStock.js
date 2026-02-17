@@ -1,12 +1,19 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "./api";
+import { formatNumber } from "./utils/format";
+
 
 export default function ReturnedStock() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [returnsList, setReturnsList] = useState([]);
   const [msg, setMsg] = useState("");
+  const doLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    navigate("/login");
+  };
 
   const loadReturns = async () => {
     try {
@@ -103,6 +110,11 @@ export default function ReturnedStock() {
           color: var(--text);
           border: 1px solid var(--border);
         }
+        .btn.danger {
+          background: #dc2626;
+          color: #fff;
+          border: 1px solid #b91c1c;
+        }
 
         .btn.ghost {
           background: transparent;
@@ -157,7 +169,14 @@ export default function ReturnedStock() {
             <span>Items returned from sales</span>
           </div>
           <div className="actions">
-            <button className="btn ghost" onClick={() => navigate("/admin")}>Back</button>
+            <button className="btn ghost" onClick={() => navigate("/admin")}>ðŸ  Home</button>
+            <button className="btn ghost" onClick={() => navigate("/reports")}>Reports</button>
+            <button className="btn ghost" onClick={() => navigate("/returns")}>Returns</button>
+            <button className="btn ghost" onClick={() => navigate("/stock")}>Stock</button>
+            <button className="btn ghost" onClick={() => navigate("/customers")}>Customers</button>
+            <button className="btn secondary" onClick={() => navigate("/end-day")}>End Day</button>
+            <button className="btn ghost" onClick={() => navigate("/billing")}>Billing</button>
+            <button className="btn danger" onClick={doLogout}>Logout</button>
           </div>
         </div>
 
@@ -195,8 +214,8 @@ export default function ReturnedStock() {
                   <td>#{r.saleId}</td>
                   <td>{r.productName}</td>
                   <td>{r.barcode}</td>
-                  <td>{r.qty}</td>
-                  <td>{r.price}</td>
+                  <td>{formatNumber(r.qty)}</td>
+                  <td>{formatNumber(r.price)}</td>
                   <td>{r.reason}</td>
                   <td>{r.returnToStock ? "Restocked" : "Damaged/Expired"}</td>
                   <td>{r.createdAt ? new Date(r.createdAt).toLocaleString() : "-"}</td>
@@ -216,3 +235,4 @@ export default function ReturnedStock() {
     </div>
   );
 }
+

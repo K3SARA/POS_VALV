@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { apiFetch } from "../api/client";
+import { formatNumber } from "../utils/format";
 
 function toReasonLabel(type) {
   if (type === "GOOD") return "Good";
@@ -140,7 +141,7 @@ export default function ReturnsScreen() {
           items,
         }),
       });
-      setMsg(`Return saved. Refund: ${Math.round(Number(res?.totalRefund || totalRefund))}`);
+      setMsg(`Return saved. Refund: ${formatNumber(res?.totalRefund || totalRefund)}`);
       await loadSale();
     } catch (e) {
       setError(e.message || "Failed to save return");
@@ -185,7 +186,7 @@ export default function ReturnsScreen() {
                 <Text style={styles.itemName}>{si.product?.name || "Item"}</Text>
                 <Text style={styles.meta}>Barcode: {si.product?.barcode || si.barcode || "-"}</Text>
                 <Text style={styles.meta}>Sold Paid: {si.qty} | Sold Free: {si.freeQty || 0}</Text>
-                <Text style={styles.meta}>Remaining Paid: {Math.round(limits.paidRemaining)} | Remaining Free: {Math.round(limits.freeRemaining)}</Text>
+                <Text style={styles.meta}>Remaining Paid: {formatNumber(limits.paidRemaining)} | Remaining Free: {formatNumber(limits.freeRemaining)}</Text>
                 <View style={styles.inline}>
                   <View style={styles.inputWrap}>
                     <Text style={styles.label}>Return Paid</Text>
@@ -233,7 +234,7 @@ export default function ReturnsScreen() {
             />
           ) : null}
 
-          <Text style={styles.total}>Refund Total: {Math.round(totalRefund)}</Text>
+          <Text style={styles.total}>Refund Total: {formatNumber(totalRefund)}</Text>
           <Pressable style={styles.button} onPress={submitReturn}>
             <Text style={styles.buttonText}>Save Return</Text>
           </Pressable>

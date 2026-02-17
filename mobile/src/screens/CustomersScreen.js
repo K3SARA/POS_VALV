@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,9 +11,9 @@ import {
   TextInput,
   View,
 } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { formatNumber } from "../utils/format";
 
 const OUT_PREFIX = "OUTSTANDING:";
 
@@ -30,13 +29,6 @@ function parseOutstanding(notes) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-function formatDateInput(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
 function getCustomerOutstanding(customer, outstandingMap) {
   return Math.max(
     Number(outstandingMap[customer.id] || 0),
@@ -50,7 +42,7 @@ const CustomerCard = React.memo(function CustomerCard({ item, outstanding }) {
       <View style={styles.topLine}>
         <Text style={styles.name}>{item.name}</Text>
         <Text style={[styles.outstanding, outstanding > 0 ? styles.outstandingWarn : null]}>
-          Outstanding: {Math.round(outstanding)}
+          Outstanding: {formatNumber(outstanding)}
         </Text>
       </View>
       <Text style={styles.meta}>Phone: {item.phone || "-"}</Text>
@@ -61,7 +53,7 @@ const CustomerCard = React.memo(function CustomerCard({ item, outstanding }) {
 });
 
 export default function CustomersScreen() {
-  const { role } = useAuth();
+  useAuth();
   const [customers, setCustomers] = useState([]);
   const [outstandingMap, setOutstandingMap] = useState({});
   const [query, setQuery] = useState("");
@@ -70,13 +62,11 @@ export default function CustomersScreen() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [customerIdInput, setCustomerIdInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
   const [addressInput, setAddressInput] = useState("");
-  const [fromDate, setFromDate] = useState(new Date());
-  const [toDate, setToDate] = useState(new Date());
-  const [showFromPicker, setShowFromPicker] = useState(false);
-  const [showToPicker, setShowToPicker] = useState(false);
+  const [sortBy, setSortBy] = useState("highest_outstanding");
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
@@ -108,15 +98,30 @@ export default function CustomersScreen() {
   }, [loadCustomers]);
 
   function resetCustomerForm() {
+    setCustomerIdInput("");
     setNameInput("");
     setPhoneInput("");
     setAddressInput("");
   }
 
   async function onAddCustomer() {
+    const customerId = String(customerIdInput || "").trim();
+    if (!customerId) {
+      setError("Customer ID is required");
+      return;
+    }
     const name = String(nameInput || "").trim();
     if (!name) {
       setError("Customer name is required");
+      return;
+    }
+    const phoneDigits = String(phoneInput || "").replace(/\D/g, "");
+    if (!phoneDigits) {
+      setError("Phone is required");
+      return;
+    }
+    if (phoneDigits.length !== 10) {
+      setError("Phone must be exactly 10 digits");
       return;
     }
     try {
@@ -126,8 +131,9 @@ export default function CustomersScreen() {
       await apiFetch("/customers", {
         method: "POST",
         body: JSON.stringify({
+          customerId,
           name,
-          phone: phoneInput ? String(phoneInput).trim() : null,
+          phone: phoneDigits,
           address: addressInput ? String(addressInput).trim() : null,
         }),
       });
@@ -150,25 +156,31 @@ export default function CustomersScreen() {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const from = new Date(fromDate);
-    from.setHours(0, 0, 0, 0);
-    const to = new Date(toDate);
-    to.setHours(23, 59, 59, 999);
-    return [...customers]
+    const list = [...customers]
       .filter((c) => {
-        const created = new Date(c.createdAt || 0);
-        if (created < from || created > to) return false;
         if (!q) return true;
         const name = String(c.name || "").toLowerCase();
         const phone = String(c.phone || "").toLowerCase();
         const address = String(c.address || "").toLowerCase();
         return name.includes(q) || phone.includes(q) || address.includes(q);
-      })
-      .sort(
-        (a, b) =>
-          getCustomerOutstanding(b, outstandingMap) - getCustomerOutstanding(a, outstandingMap)
-      );
-  }, [customers, outstandingMap, query, fromDate, toDate]);
+      });
+
+    if (sortBy === "highest_outstanding") {
+      list.sort((a, b) => getCustomerOutstanding(b, outstandingMap) - getCustomerOutstanding(a, outstandingMap));
+    } else if (sortBy === "lowest_outstanding") {
+      list.sort((a, b) => getCustomerOutstanding(a, outstandingMap) - getCustomerOutstanding(b, outstandingMap));
+    } else if (sortBy === "name_asc") {
+      list.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    } else if (sortBy === "name_desc") {
+      list.sort((a, b) => String(b.name || "").localeCompare(String(a.name || "")));
+    } else if (sortBy === "latest") {
+      list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    } else if (sortBy === "oldest") {
+      list.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    }
+
+    return list;
+  }, [customers, outstandingMap, query, sortBy]);
 
   const keyExtractor = useCallback((item) => String(item.id), []);
   const renderCustomerItem = useCallback(
@@ -178,60 +190,39 @@ export default function CustomersScreen() {
     [outstandingMap]
   );
 
-  function onFromDateChange(event, selected) {
-    if (Platform.OS === "android") setShowFromPicker(false);
-    if (selected) setFromDate(selected);
-  }
-
-  function onToDateChange(event, selected) {
-    if (Platform.OS === "android") setShowToPicker(false);
-    if (selected) setToDate(selected);
-  }
-
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Customers</Text>
-      {role === "admin" ? (
-        <Pressable style={styles.addButton} onPress={() => setShowAddModal(true)}>
+      <View style={styles.headingRow}>
+        <Text style={styles.heading}>Customers</Text>
+        <Pressable style={styles.topAddButton} onPress={() => setShowAddModal(true)}>
           <Text style={styles.addButtonText}>Add Customer</Text>
         </Pressable>
-      ) : null}
+      </View>
       <TextInput
         style={styles.input}
         value={query}
         onChangeText={setQuery}
         placeholder="Search customer"
       />
-      <View style={styles.filterRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.filterLabel}>From Date</Text>
-          <Pressable style={styles.dateInputBtn} onPress={() => setShowFromPicker(true)}>
-            <Text style={styles.dateInputText}>{formatDateInput(fromDate)}</Text>
+      <Text style={styles.filterLabel}>Sort by</Text>
+      <View style={styles.sortRow}>
+        {[
+          { key: "highest_outstanding", label: "Highest Outstanding" },
+          { key: "lowest_outstanding", label: "Lowest Outstanding" },
+          { key: "latest", label: "Latest" },
+          { key: "oldest", label: "Oldest" },
+          { key: "name_asc", label: "Name A-Z" },
+          { key: "name_desc", label: "Name Z-A" },
+        ].map((opt) => (
+          <Pressable
+            key={opt.key}
+            style={[styles.sortChip, sortBy === opt.key && styles.sortChipActive]}
+            onPress={() => setSortBy(opt.key)}
+          >
+            <Text style={[styles.sortChipText, sortBy === opt.key && styles.sortChipTextActive]}>{opt.label}</Text>
           </Pressable>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.filterLabel}>To Date</Text>
-          <Pressable style={styles.dateInputBtn} onPress={() => setShowToPicker(true)}>
-            <Text style={styles.dateInputText}>{formatDateInput(toDate)}</Text>
-          </Pressable>
-        </View>
+        ))}
       </View>
-      {showFromPicker ? (
-        <DateTimePicker
-          value={fromDate}
-          mode="date"
-          display="default"
-          onChange={onFromDateChange}
-        />
-      ) : null}
-      {showToPicker ? (
-        <DateTimePicker
-          value={toDate}
-          mode="date"
-          display="default"
-          onChange={onToDateChange}
-        />
-      ) : null}
       {loading ? <ActivityIndicator style={{ marginBottom: 10 }} /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {message ? <Text style={styles.success}>{message}</Text> : null}
@@ -260,6 +251,12 @@ export default function CustomersScreen() {
             <ScrollView style={{ maxHeight: 320 }}>
               <TextInput
                 style={styles.input}
+                value={customerIdInput}
+                onChangeText={setCustomerIdInput}
+                placeholder="Customer ID *"
+              />
+              <TextInput
+                style={styles.input}
                 value={nameInput}
                 onChangeText={setNameInput}
                 placeholder="Name *"
@@ -267,8 +264,10 @@ export default function CustomersScreen() {
               <TextInput
                 style={styles.input}
                 value={phoneInput}
-                onChangeText={setPhoneInput}
-                placeholder="Phone"
+                onChangeText={(v) => setPhoneInput(String(v || "").replace(/\D/g, "").slice(0, 10))}
+                placeholder="Phone *"
+                keyboardType="numeric"
+                maxLength={10}
               />
               <TextInput
                 style={styles.input}
@@ -308,7 +307,13 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     color: "#111827",
+  },
+  headingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 10,
+    gap: 10,
   },
   input: {
     backgroundColor: "#fff",
@@ -323,6 +328,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     marginBottom: 8,
+  },
+  sortRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 10,
+  },
+  sortChip: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: "#fff",
+  },
+  sortChipActive: {
+    backgroundColor: "#1d4ed8",
+    borderColor: "#1d4ed8",
+  },
+  sortChipText: {
+    color: "#374151",
+    fontWeight: "600",
+    fontSize: 12,
+  },
+  sortChipTextActive: {
+    color: "#fff",
   },
   filterLabel: {
     color: "#4b5563",
@@ -356,6 +388,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
     flex: 1,
+  },
+  topAddButton: {
+    alignSelf: "flex-start",
+    backgroundColor: "#0f766e",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 10,
   },
   addButtonText: {
     color: "#fff",

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
 import ReceiptPrint from "./ReceiptPrint";
@@ -20,6 +20,10 @@ export default function Cashier({ onLogout }) {
   const [showLayoutEditor, setShowLayoutEditor] = useState(false);
   const [printPaperPrompt, setPrintPaperPrompt] = useState(false);
   const [printLayoutMode, setPrintLayoutMode] = useState("3inch");
+  const [showReportsMenu, setShowReportsMenu] = useState(false);
+  const [showStockMenu, setShowStockMenu] = useState(false);
+  const reportsMenuRef = useRef(null);
+  const stockMenuRef = useRef(null);
   const DEFAULT_BILL_LAYOUT = {
     companyName: "Apex Logistics",
     headerText: "Aluviharaya, Matale\nMobile: +94770654279\nThank you! Visit again",
@@ -49,6 +53,7 @@ export default function Cashier({ onLogout }) {
   const [draftLoading, setDraftLoading] = useState(false);
   const [showDraftDropdown, setShowDraftDropdown] = useState(false);
   const autoDraftSavedRef = useRef(false);
+  const isCompletingSaleRef = useRef(false);
   const [cart, setCart] = useState([]);
   const [dayStarted, setDayStarted] = useState(!requiresStartDay);
   const [dayStatusLoading, setDayStatusLoading] = useState(requiresStartDay);
@@ -123,6 +128,19 @@ export default function Cashier({ onLogout }) {
     fetchDrafts();
   }, []);
 
+  useEffect(() => {
+    const onDocClick = (event) => {
+      if (reportsMenuRef.current && !reportsMenuRef.current.contains(event.target)) {
+        setShowReportsMenu(false);
+      }
+      if (stockMenuRef.current && !stockMenuRef.current.contains(event.target)) {
+        setShowStockMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
   const buildDraftPayload = () => ({
     name: draftName.trim() || null,
     cart,
@@ -137,16 +155,12 @@ export default function Cashier({ onLogout }) {
   });
 
   const shouldAutoSaveDraft = () => {
-    if (cart.length > 0) return true;
-    if (customerName || customerPhone || customerAddress) return true;
-    if (discountType !== "none" && String(discountValue).trim()) return true;
-    if (paymentMethod !== "cash") return true;
-    if (String(cashReceived).trim()) return true;
-    return false;
+    return cart.length > 0;
   };
 
   const autoSaveDraft = async () => {
     if (autoDraftSavedRef.current) return;
+    if (isCompletingSaleRef.current) return;
     if (!shouldAutoSaveDraft()) return;
     autoDraftSavedRef.current = true;
     try {
@@ -707,6 +721,7 @@ export default function Cashier({ onLogout }) {
     }
 
     try {
+      isCompletingSaleRef.current = true;
       setLoading(true);
       setMsg("");
       const data = await apiFetch("/cashier/day/start", {
@@ -833,9 +848,15 @@ export default function Cashier({ onLogout }) {
         customerPhone,
         customerAddress,
       });
+      autoDraftSavedRef.current = true;
       clearCart();
+      setTimeout(() => {
+        autoDraftSavedRef.current = false;
+        isCompletingSaleRef.current = false;
+      }, 800);
     } catch (e) {
       setMsg("Error: " + e.message);
+      isCompletingSaleRef.current = false;
     } finally {
       setLoading(false);
     }
@@ -854,22 +875,76 @@ export default function Cashier({ onLogout }) {
   </button>
 )}
 
-<button className="btn" onClick={onLogout}>Logout</button>
+<button className="btn" onClick={onLogout} style={{ background: "#dc2626", color: "#fff", border: "1px solid #b91c1c" }}>Logout</button>
 
       </div>
 
+      <button onClick={() => navigate("/admin")} style={{ padding: 10, fontSize: 16 }}>
+        🏠 Home
+      </button>
       <button onClick={() => navigate("/reports")} style={{ padding: 10, fontSize: 16 }}>
         Sales History
       </button>
-      <button onClick={() => navigate("/reports")} style={{ padding: 10, fontSize: 16 }}>
-        Reports
-      </button>
+      <div ref={reportsMenuRef} style={{ position: "relative", display: "inline-block" }}>
+        <button onClick={() => setShowReportsMenu((v) => !v)} style={{ padding: 10, fontSize: 16 }}>
+          Reports
+        </button>
+        {showReportsMenu && (
+          <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
+            <button onClick={() => { setShowReportsMenu(false); navigate("/reports"); }} style={{ padding: 8, fontSize: 14 }}>
+              Sales Reports
+            </button>
+            <button onClick={() => { setShowReportsMenu(false); navigate("/reports/items"); }} style={{ padding: 8, fontSize: 14 }}>
+              Item-wise Report
+            </button>
+          </div>
+        )}
+      </div>
       <button onClick={() => navigate("/end-day")} style={{ padding: 10, fontSize: 16 }}>
         End Day
       </button>
       <button onClick={() => navigate("/returns")} style={{ padding: 10, fontSize: 16 }}>
         Returns
       </button>
+      {role !== "admin" && (
+        <div ref={stockMenuRef} style={{ position: "relative", display: "inline-block" }}>
+          <button onClick={() => setShowStockMenu((v) => !v)} style={{ padding: 10, fontSize: 16 }}>
+            Stock
+          </button>
+          {showStockMenu && (
+            <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
+              <button onClick={() => { setShowStockMenu(false); navigate("/stock"); }} style={{ padding: 8, fontSize: 14 }}>
+                Current Stock
+              </button>
+              <button onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }} style={{ padding: 8, fontSize: 14 }}>
+                Returned Stock
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {role === "admin" && (
+        <>
+          <div ref={stockMenuRef} style={{ position: "relative", display: "inline-block" }}>
+            <button onClick={() => setShowStockMenu((v) => !v)} style={{ padding: 10, fontSize: 16 }}>
+              Stock
+            </button>
+            {showStockMenu && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
+                <button onClick={() => { setShowStockMenu(false); navigate("/stock"); }} style={{ padding: 8, fontSize: 14 }}>
+                  Current Stock
+                </button>
+                <button onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }} style={{ padding: 8, fontSize: 14 }}>
+                  Returned Stock
+                </button>
+              </div>
+            )}
+          </div>
+          <button onClick={() => navigate("/customers")} style={{ padding: 10, fontSize: 16 }}>
+            Customers
+          </button>
+        </>
+      )}
 
       {requiresStartDay && (
         <div
@@ -1362,7 +1437,6 @@ export default function Cashier({ onLogout }) {
                     style={{ width: 80, padding: 6 }}
                   />
                 </td>
-                <td>{Math.max(0, getLineBase(i) - getItemDiscountAmount(i))}</td>
                 <td>
   <div style={{ display: "flex", gap: 6 }}>
     <select
@@ -1386,6 +1460,7 @@ export default function Cashier({ onLogout }) {
     />
   </div>
 </td>
+                <td>{Math.max(0, getLineBase(i) - getItemDiscountAmount(i))}</td>
 
                 <td>
                   <button onClick={() => removeItem(i.barcode, i.freeIssue)}>Remove</button>
@@ -1630,4 +1705,5 @@ export default function Cashier({ onLogout }) {
     </div>
   );
 }
+
 

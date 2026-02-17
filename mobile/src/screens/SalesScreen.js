@@ -14,9 +14,13 @@ import {
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { apiFetch } from "../api/client";
+import { formatNumber } from "../utils/format";
 
 const SaleCard = React.memo(function SaleCard({ sale, onPress }) {
-  const totalItems = (sale.saleItems || []).reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  const totalItems = (sale.saleItems || []).reduce(
+    (sum, item) => sum + Number(item.qty || 0) + Number(item.freeQty || 0),
+    0
+  );
   const customer = sale.customer?.name || "-";
   const paymentMethod = sale.paymentMethod || "cash";
   const billTotal = Number(sale.total || 0);
@@ -25,14 +29,14 @@ const SaleCard = React.memo(function SaleCard({ sale, onPress }) {
 
   return (
     <Pressable style={styles.card} onPress={onPress}>
-      <Text style={styles.line}><Text style={styles.label}>Sale ID:</Text> {sale.id}</Text>
+      <Text style={styles.line}><Text style={styles.label}>Sale ID:</Text> {formatNumber(sale.id)}</Text>
       <Text style={styles.line}><Text style={styles.label}>Date&time:</Text> {new Date(sale.createdAt).toLocaleString()}</Text>
       <Text style={styles.line}><Text style={styles.label}>Customer:</Text> {customer}</Text>
       <Text style={styles.line}><Text style={styles.label}>Payment:</Text> {paymentMethod}</Text>
-      <Text style={styles.line}><Text style={styles.label}>Items:</Text> {totalItems}</Text>
-      <Text style={styles.line}><Text style={styles.label}>Bill total:</Text> {Math.round(billTotal)}</Text>
-      <Text style={styles.line}><Text style={styles.label}>Cash received:</Text> {Math.round(cashReceived)}</Text>
-      <Text style={styles.line}><Text style={styles.label}>Outstanding:</Text> {Math.round(outstanding)}</Text>
+      <Text style={styles.line}><Text style={styles.label}>Items:</Text> {formatNumber(totalItems)}</Text>
+      <Text style={styles.line}><Text style={styles.label}>Bill total:</Text> {formatNumber(billTotal)}</Text>
+      <Text style={styles.line}><Text style={styles.label}>Cash received:</Text> {formatNumber(cashReceived)}</Text>
+      <Text style={styles.line}><Text style={styles.label}>Outstanding:</Text> {formatNumber(outstanding)}</Text>
     </Pressable>
   );
 });
@@ -55,20 +59,22 @@ function buildSaleDetailText(sale) {
   ];
   (sale.saleItems || []).forEach((item) => {
     const qty = Number(item.qty || 0);
+    const freeQty = Number(item.freeQty || 0);
     const price = Number(item.price || 0);
     const lineBase = qty * price;
     const discountType = item.itemDiscountType || "none";
     const discountValue = Number(item.itemDiscountValue || 0);
     const lineNet = Math.max(0, lineBase - discountValue);
     lines.push(`${item.product?.name || item.barcode || "-"}`);
-    lines.push(`  ${qty} x ${Math.round(price)} = ${Math.round(lineBase)}`);
-    lines.push(`  Discount: ${discountType}${discountType !== "none" ? ` (${Math.round(discountValue)})` : ""}`);
-    lines.push(`  Line Total: ${Math.round(lineNet)}`);
+    lines.push(`  ${qty} x ${formatNumber(price)} = ${formatNumber(lineBase)}`);
+    if (freeQty > 0) lines.push(`  Free Qty: ${freeQty}`);
+    lines.push(`  Discount: ${discountType}${discountType !== "none" ? ` (${formatNumber(discountValue)})` : ""}`);
+    lines.push(`  Line Total: ${formatNumber(lineNet)}`);
   });
   lines.push("------------------------");
-  lines.push(`Bill Total: ${Math.round(Number(sale.total || 0))}`);
-  lines.push(`Cash Received: ${Math.round(Number(sale.cashReceived || 0))}`);
-  lines.push(`Outstanding: ${Math.round(Number(sale.outstanding || 0))}`);
+  lines.push(`Bill Total: ${formatNumber(sale.total || 0)}`);
+  lines.push(`Cash Received: ${formatNumber(sale.cashReceived || 0)}`);
+  lines.push(`Outstanding: ${formatNumber(sale.outstanding || 0)}`);
   return lines.join("\n");
 }
 
@@ -208,7 +214,7 @@ export default function SalesScreen() {
                   <Text style={styles.label}>Route:</Text> {selectedSale.route || "-"}
                 </Text>
                 <Text style={styles.line}>
-                  <Text style={styles.label}>Sale ID:</Text> {selectedSale.id}
+                  <Text style={styles.label}>Sale ID:</Text> {formatNumber(selectedSale.id)}
                 </Text>
                 <Text style={styles.line}>
                   <Text style={styles.label}>Date&time:</Text> {new Date(selectedSale.createdAt).toLocaleString()}
@@ -216,6 +222,7 @@ export default function SalesScreen() {
                 <ScrollView style={styles.itemsBox}>
                   {(selectedSale.saleItems || []).map((item) => {
                     const qty = Number(item.qty || 0);
+                    const freeQty = Number(item.freeQty || 0);
                     const price = Number(item.price || 0);
                     const lineBase = qty * price;
                     const discountType = item.itemDiscountType || "none";
@@ -225,11 +232,12 @@ export default function SalesScreen() {
                       <View key={String(item.id)} style={styles.itemRow}>
                         <Text style={styles.itemName}>{item.product?.name || item.barcode || "-"}</Text>
                         <Text style={styles.itemMeta}>Barcode: {item.barcode || "-"}</Text>
-                        <Text style={styles.itemMeta}>Qty: {qty} x Price: {Math.round(price)}</Text>
+                        <Text style={styles.itemMeta}>Qty: {formatNumber(qty)} x Price: {formatNumber(price)}</Text>
+                        {freeQty > 0 ? <Text style={styles.itemMeta}>Free Qty: {freeQty}</Text> : null}
                         <Text style={styles.itemMeta}>
-                          Discount: {discountType} {discountType !== "none" ? `(${Math.round(discountValue)})` : ""}
+                          Discount: {discountType} {discountType !== "none" ? `(${formatNumber(discountValue)})` : ""}
                         </Text>
-                        <Text style={styles.itemMeta}>Line Total: {Math.round(lineNet)}</Text>
+                        <Text style={styles.itemMeta}>Line Total: {formatNumber(lineNet)}</Text>
                       </View>
                     );
                   })}

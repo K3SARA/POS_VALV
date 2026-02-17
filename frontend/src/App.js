@@ -11,6 +11,7 @@ import EndDay from "./EndDay";
 import ItemWiseReport from "./ItemWiseReport";
 import Stock from "./Stock";
 import ReturnedStock from "./ReturnedStock";
+import Customers from "./Customers";
 
 
 
@@ -83,7 +84,7 @@ export default function App() {
         <Route
           path="/stock"
           element={
-            <PrivateRoute allow="admin">
+            <PrivateRoute>
               <Stock />
             </PrivateRoute>
           }
@@ -91,8 +92,16 @@ export default function App() {
         <Route
           path="/stock/returned"
           element={
-            <PrivateRoute allow="admin">
+            <PrivateRoute>
               <ReturnedStock />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/customers"
+          element={
+            <PrivateRoute allow="admin">
+              <Customers />
             </PrivateRoute>
           }
         />

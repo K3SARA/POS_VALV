@@ -1,8 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { useNavigate } from "react-router-dom";
 import { apiFetch, getRole } from "./api";
 import ReceiptPrint from "./ReceiptPrint";
+import { formatNumber } from "./utils/format";
+
+
 
 
 function formatDate(d) {
@@ -14,7 +17,6 @@ export default function Reports() {
   const [sales, setSales] = useState([]);
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
-  const [stockLoading, setStockLoading] = useState(false);
   const [outstandingLoading, setOutstandingLoading] = useState(false);
   const role = getRole();
 
@@ -34,13 +36,82 @@ const [selectedSales, setSelectedSales] = useState({});
 const [printStockOnly, setPrintStockOnly] = useState(false);
   const [printPanelId, setPrintPanelId] = useState("");
 
-  const [stockReport, setStockReport] = useState({ totalStock: 0, totalValue: 0, rows: [] });
   const [customerOutstanding, setCustomerOutstanding] = useState([]);
 const [saving, setSaving] = useState(false);
-  const [showStock, setShowStock] = useState(false);
   const [showOutstanding, setShowOutstanding] = useState(false);
   const [showCashSales, setShowCashSales] = useState(false);
   const [showCreditSales, setShowCreditSales] = useState(false);
+  const [showReportsMenu, setShowReportsMenu] = useState(false);
+  const [showStockMenu, setShowStockMenu] = useState(false);
+  const reportsMenuRef = useRef(null);
+  const stockMenuRef = useRef(null);
+  const doLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    navigate("/login");
+  };
+
+  useEffect(() => {
+    const onDocClick = (event) => {
+      if (reportsMenuRef.current && !reportsMenuRef.current.contains(event.target)) {
+        setShowReportsMenu(false);
+      }
+      if (stockMenuRef.current && !stockMenuRef.current.contains(event.target)) {
+        setShowStockMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const downloadSalesCsv = () => {
+    const rows = filtered || [];
+    const csvRows = [
+      ["Date", "Sale ID", "Customer Name", "Address", "Bill Value"],
+      ...rows.map((s) => [
+        s.createdAt ? new Date(s.createdAt).toLocaleString() : "",
+        s.id,
+        s.customerName || s.customer?.name || "Walk-in",
+        s.customerAddress || s.customer?.address || "-",
+        s.total,
+      ]),
+    ];
+    const csv = csvRows.map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, "\"\"")}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sales_list.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCreditSalesCsv = () => {
+    const rows = creditSales || [];
+    const csvRows = [
+      ["Date", "Sale ID", "Customer Name", "Phone", "Address", "Bill Value"],
+      ...rows.map((s) => [
+        s.createdAt ? new Date(s.createdAt).toLocaleString() : "",
+        s.id,
+        s.customerName || s.customer?.name || "Walk-in",
+        s.customerPhone || s.customer?.phone || "-",
+        s.customerAddress || s.customer?.address || "-",
+        s.total,
+      ]),
+    ];
+    const csv = csvRows.map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, "\"\"")}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "credit_sales.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 const openEdit = async (saleId) => {
   setEditErr("");
   setEditOpen(true);
@@ -225,19 +296,6 @@ const closeEdit = () => {
     }
   };
 
-  const loadStockReport = async () => {
-    try {
-      setStockLoading(true);
-      const data = await apiFetch("/reports/stock");
-      setStockReport(data || { totalStock: 0, totalValue: 0, rows: [] });
-    } catch (e) {
-      setMsg("Error: " + e.message);
-      setStockReport({ totalStock: 0, totalValue: 0, rows: [] });
-    } finally {
-      setStockLoading(false);
-    }
-  };
-
   const loadCustomerOutstanding = async () => {
     try {
       setOutstandingLoading(true);
@@ -251,15 +309,6 @@ const closeEdit = () => {
     }
   };
 
-  const handlePrintStock = () => {
-    setPrintStockOnly(true);
-    const cleanup = () => setPrintStockOnly(false);
-    window.onafterprint = cleanup;
-    setTimeout(() => {
-      window.print();
-    }, 50);
-  };
-
   const handlePrintPanel = (id) => {
     setPrintPanelId(id);
     const cleanup = () => setPrintPanelId("");
@@ -271,7 +320,6 @@ const closeEdit = () => {
 
   useEffect(() => {
     loadSales();
-    loadStockReport();
     loadCustomerOutstanding();
   }, []);
 
@@ -401,9 +449,30 @@ const closeEdit = () => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <h2 style={{ margin: 0 }}>Reports</h2>
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => navigate(-1)} style={{ padding: 10 }}>
-            Back
-          </button>
+          <button onClick={() => navigate("/admin")} style={{ padding: 10 }}>ðŸ  Home</button>
+          <div ref={reportsMenuRef} style={{ position: "relative" }}>
+            <button onClick={() => setShowReportsMenu((v) => !v)} style={{ padding: 10 }}>Reports</button>
+            {showReportsMenu && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
+                <button onClick={() => { setShowReportsMenu(false); navigate("/reports"); }} style={{ padding: 8 }}>Sales Reports</button>
+                <button onClick={() => { setShowReportsMenu(false); navigate("/reports/items"); }} style={{ padding: 8 }}>Item-wise Report</button>
+              </div>
+            )}
+          </div>
+          <button onClick={() => navigate("/returns")} style={{ padding: 10 }}>Returns</button>
+          <div ref={stockMenuRef} style={{ position: "relative" }}>
+            <button onClick={() => setShowStockMenu((v) => !v)} style={{ padding: 10 }}>Stock</button>
+            {showStockMenu && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
+                <button onClick={() => { setShowStockMenu(false); navigate("/stock"); }} style={{ padding: 8 }}>Current Stock</button>
+                <button onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }} style={{ padding: 8 }}>Returned Stock</button>
+              </div>
+            )}
+          </div>
+          <button onClick={() => navigate("/customers")} style={{ padding: 10 }}>Customers</button>
+          <button onClick={() => navigate("/end-day")} style={{ padding: 10 }}>End Day</button>
+          <button onClick={() => navigate("/billing")} style={{ padding: 10 }}>Billing</button>
+          <button onClick={doLogout} style={{ padding: 10, background: "#dc2626", color: "#fff", border: "1px solid #b91c1c", borderRadius: 6 }}>Logout</button>
           <button onClick={loadSales} disabled={loading} style={{ padding: 10 }}>
             Refresh
           </button>
@@ -448,9 +517,14 @@ const closeEdit = () => {
       <div className={`print-panel-area ${printPanelId === "sales-list" ? "print-panel-area" : ""}`} style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <h3 style={{ marginTop: 0 }}>Sales List</h3>
-          <button onClick={() => handlePrintPanel("sales-list")} className="print-hide" style={{ padding: 8 }}>
-            Print
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => handlePrintPanel("sales-list")} className="print-hide" style={{ padding: 8 }}>
+              Print
+            </button>
+            <button onClick={downloadSalesCsv} className="print-hide" style={{ padding: 8 }}>
+              Export Excel
+            </button>
+          </div>
         </div>
 
         {filtered.length === 0 ? (
@@ -485,7 +559,7 @@ const closeEdit = () => {
                   <td>{s.id}</td>
                   <td>{s.customerName || s.customer?.name || "Walk-in"}</td>
                   <td>{s.customerAddress || s.customer?.address || "-"}</td>
-                  <td>Rs {s.total}</td>
+                  <td>Rs {formatNumber(s.total)}</td>
                   {role === "admin" && (
                     <td style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => openEdit(s.id)} style={{ padding: "6px 10px" }}>
@@ -546,80 +620,13 @@ const closeEdit = () => {
                       <td>{row.name}</td>
                       <td>{row.qty}</td>
                       <td>{row.freeQty}</td>
-                      <td>{Math.round(row.total)}</td>
+                      <td>{formatNumber(row.total)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
           </div>
-        )}
-      </div>
-
-      <div className={`print-stock-area ${printPanelId === "remaining-stock" ? "print-panel-area" : ""}`} style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <h3 style={{ marginTop: 0 }}>Remaining Stock</h3>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setShowStock((v) => !v)} style={{ padding: 8 }} className="print-hide">
-              {showStock ? "Hide" : "View"}
-            </button>
-            <button
-              onClick={handlePrintStock}
-              disabled={!showStock || stockLoading || (stockReport.rows || []).length === 0}
-              style={{ padding: 8 }}
-              className="print-hide"
-            >
-              Print
-            </button>
-            <button
-              onClick={() => handlePrintPanel("remaining-stock")}
-              disabled={!showStock || stockLoading || (stockReport.rows || []).length === 0}
-              style={{ padding: 8 }}
-              className="print-hide"
-            >
-              Panel Print
-            </button>
-            <button onClick={loadStockReport} disabled={stockLoading} style={{ padding: 8 }} className="print-hide">
-              Refresh Stock
-            </button>
-          </div>
-        </div>
-        {showStock && (
-          <>
-            <div style={{ lineHeight: 1.8, marginBottom: 10 }}>
-              <div>Total stock units: <b>{stockReport.totalStock || 0}</b></div>
-              <div>Total stock value: <b>{stockReport.totalValue || 0}</b></div>
-            </div>
-
-            {stockLoading ? (
-              <p style={{ color: "#666" }}>Loading stock report...</p>
-            ) : (stockReport.rows || []).length === 0 ? (
-              <p style={{ color: "#666" }}>No stock data.</p>
-            ) : (
-              <table border="1" cellPadding="8" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead style={{ color: "#000" }}>
-                  <tr>
-                    <th>Barcode</th>
-                    <th>Item</th>
-                    <th>Stock</th>
-                    <th>Price</th>
-                    <th>Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(stockReport.rows || []).map((r) => (
-                    <tr key={r.id}>
-                      <td>{r.barcode}</td>
-                      <td>{r.name}</td>
-                      <td>{r.stock}</td>
-                      <td>{r.price}</td>
-                      <td>{r.value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </>
         )}
       </div>
 
@@ -711,7 +718,7 @@ const closeEdit = () => {
                       <td>{s.customerName || s.customer?.name || "Walk-in"}</td>
                       <td>{s.customerPhone || s.customer?.phone || "-"}</td>
                       <td>{s.customerAddress || s.customer?.address || "-"}</td>
-                      <td>Rs {s.total}</td>
+                      <td>Rs {formatNumber(s.total)}</td>
                       {role === "admin" && (
                         <td style={{ display: "flex", gap: 6 }}>
                           <button onClick={() => openEdit(s.id)} style={{ padding: "6px 10px" }}>
@@ -745,12 +752,17 @@ const closeEdit = () => {
       <div className={`print-panel-area ${printPanelId === "credit-sales" ? "print-panel-area" : ""}`} style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <h3 style={{ marginTop: 0 }}>Credit Sales Report</h3>
-          <button onClick={() => setShowCreditSales((v) => !v)} style={{ padding: 8 }}>
-            {showCreditSales ? "Hide" : "View"}
-          </button>
-          <button onClick={() => handlePrintPanel("credit-sales")} className="print-hide" style={{ padding: 8 }}>
-            Print
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setShowCreditSales((v) => !v)} style={{ padding: 8 }}>
+              {showCreditSales ? "Hide" : "View"}
+            </button>
+            <button onClick={() => handlePrintPanel("credit-sales")} className="print-hide" style={{ padding: 8 }}>
+              Print
+            </button>
+            <button onClick={downloadCreditSalesCsv} className="print-hide" style={{ padding: 8 }}>
+              Export Excel
+            </button>
+          </div>
         </div>
         {showCreditSales && (
           <>
@@ -782,7 +794,7 @@ const closeEdit = () => {
                       <td>{s.customerName || s.customer?.name || "Walk-in"}</td>
                       <td>{s.customerPhone || s.customer?.phone || "-"}</td>
                       <td>{s.customerAddress || s.customer?.address || "-"}</td>
-                      <td>Rs {s.total}</td>
+                      <td>Rs {formatNumber(s.total)}</td>
                       {role === "admin" && (
                         <td style={{ display: "flex", gap: 6 }}>
                           <button onClick={() => openEdit(s.id)} style={{ padding: "6px 10px" }}>
@@ -1087,7 +1099,4 @@ const closeEdit = () => {
     </div>
   );
 }
-
-
-
 

@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
 import ReceiptPrint from "./ReceiptPrint";
+import { formatNumber } from "./utils/format";
 import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
+
 
 export default function SalesHistory() {
   const [sales, setSales] = useState([]);
@@ -69,6 +71,9 @@ export default function SalesHistory() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h2 style={{ margin: 0 }}>???? Sales History</h2>
         <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => navigate("/admin")} style={{ padding: 10 }}>
+            ðŸ  Home
+          </button>
           <button onClick={() => navigate(-1)} style={{ padding: 10 }}>
             Back
           </button>
@@ -94,7 +99,7 @@ export default function SalesHistory() {
                       ({new Date(s.createdAt).toLocaleString()})
                     </span>
                   )}
-                  <div>Total: <b>{s.total}</b></div>
+                  <div>Total: <b>{formatNumber(s.total)}</b></div>
                 </div>
 
                 <button onClick={() => setOpenSaleId(openSaleId === s.id ? null : s.id)}>
@@ -132,8 +137,8 @@ export default function SalesHistory() {
                           <td>{si.product?.name || "Unknown"}</td>
                           <td>{si.qty}</td>
                           <td>{si.freeQty ?? 0}</td>
-                          <td>{si.price}</td>
-                          <td>{si.price * si.qty}</td>
+                          <td>{formatNumber(si.price)}</td>
+                          <td>{formatNumber(si.price * si.qty)}</td>
                         </tr>
                       ))}
                     </tbody>

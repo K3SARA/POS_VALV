@@ -1,31 +1,46 @@
-import React, { useCallback, useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "./api";
+import { formatNumber } from "./utils/format";
+
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
 export default function Stock() {
   const navigate = useNavigate();
+  const role = localStorage.getItem("role");
+  const isAdmin = role === "admin";
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
-
   const [products, setProducts] = useState([]);
   const [productsTotal, setProductsTotal] = useState(0);
-
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
   const [editingBarcode, setEditingBarcode] = useState(null);
-  const [editValues, setEditValues] = useState({ name: "", price: "", billingPrice: "", stock: "" });
+  const [editValues, setEditValues] = useState({ name: "", invoicePrice: "", billingPrice: "", stock: "" });
   const [page, setPage] = useState(0);
   const pageSize = 25;
-  const [productsLoaded, setProductsLoaded] = useState(false);
-  const [previewImage, setPreviewImage] = useState("");
 
-  const normalizeInvoicePhoto = (value) => {
-    const raw = String(value || "").trim();
-    if (!raw) return "";
-    if (raw.startsWith("data:image/")) return raw;
-    if (raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("file://")) return raw;
-    return `data:image/jpeg;base64,${raw}`;
+  const [showAddStock, setShowAddStock] = useState(false);
+  const [showReportsMenu, setShowReportsMenu] = useState(false);
+  const [showStockMenu, setShowStockMenu] = useState(false);
+  const reportsMenuRef = React.useRef(null);
+  const stockMenuRef = React.useRef(null);
+  const [barcode, setBarcode] = useState("");
+  const [name, setName] = useState("");
+  const [invoicePrice, setInvoicePrice] = useState("");
+  const [billingPrice, setBillingPrice] = useState("");
+  const [stock, setStock] = useState("");
+  const [supplierName, setSupplierName] = useState("");
+  const [supplierInvoiceNo, setSupplierInvoiceNo] = useState("");
+  const [supplierPaymentMethod, setSupplierPaymentMethod] = useState("cash");
+  const [receivedDate, setReceivedDate] = useState(todayStr());
+  const [invoicePhoto, setInvoicePhoto] = useState("");
+  const doLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    navigate("/login");
   };
 
   const loadProducts = useCallback(async (nextPage = 0) => {
@@ -36,13 +51,29 @@ export default function Stock() {
       setProducts(data.items || []);
       setProductsTotal(data.total || 0);
       setPage(nextPage);
-      setProductsLoaded(true);
     } catch (e) {
       setMsg(e.message);
     } finally {
       setLoading(false);
     }
   }, [pageSize]);
+
+  useEffect(() => {
+    loadProducts(0);
+  }, [loadProducts]);
+
+  useEffect(() => {
+    const onDocClick = (event) => {
+      if (reportsMenuRef.current && !reportsMenuRef.current.contains(event.target)) {
+        setShowReportsMenu(false);
+      }
+      if (stockMenuRef.current && !stockMenuRef.current.contains(event.target)) {
+        setShowStockMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
   const visibleProducts = useMemo(() => {
     const normalize = (v) => String(v ?? "").toLowerCase();
@@ -51,33 +82,28 @@ export default function Stock() {
       if (!q) return true;
       return normalize(p.name).includes(q) || normalize(p.barcode).includes(q);
     });
-
-    const sorted = [...filtered].sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
-      if (sortBy === "name") {
-        return normalize(a.name).localeCompare(normalize(b.name)) * dir;
-      }
+      if (sortBy === "name") return normalize(a.name).localeCompare(normalize(b.name)) * dir;
       const aNum = Number(String(a[sortBy] ?? "").replace(/,/g, "")) || 0;
       const bNum = Number(String(b[sortBy] ?? "").replace(/,/g, "")) || 0;
       return (aNum - bNum) * dir;
     });
-
-    return sorted;
   }, [products, query, sortBy, sortDir]);
 
   const startEdit = (product) => {
     setEditingBarcode(product.barcode);
     setEditValues({
       name: product.name,
-      price: product.price,
-      billingPrice: product.billingPrice,
+      invoicePrice: product.invoicePrice ?? "",
+      billingPrice: product.price ?? "",
       stock: product.stock,
     });
   };
 
   const cancelEdit = () => {
     setEditingBarcode(null);
-    setEditValues({ name: "", price: "", billingPrice: "", stock: "" });
+    setEditValues({ name: "", invoicePrice: "", billingPrice: "", stock: "" });
   };
 
   const saveEdit = async (barcodeValue) => {
@@ -86,16 +112,14 @@ export default function Stock() {
         method: "PUT",
         body: JSON.stringify({
           name: editValues.name,
-          price: Number(editValues.price),
-          billingPrice: Number(editValues.billingPrice),
+          invoicePrice: editValues.invoicePrice,
+          billingPrice: editValues.billingPrice,
           stock: Number(editValues.stock),
         }),
       });
       setMsg("Product updated");
       cancelEdit();
-      if (productsLoaded) {
-        await loadProducts(page);
-      }
+      await loadProducts(page);
     } catch (e) {
       setMsg("Error: " + e.message);
     }
@@ -106,11 +130,80 @@ export default function Stock() {
     try {
       await apiFetch(`/products/${barcodeValue}`, { method: "DELETE" });
       setMsg("Product deleted");
-      if (productsLoaded) {
-        await loadProducts(page);
-      }
+      await loadProducts(page);
     } catch (e) {
       setMsg("Error: " + e.message);
+    }
+  };
+
+  const createProduct = async (e) => {
+    e.preventDefault();
+    setMsg("");
+    try {
+      await apiFetch("/products", {
+        method: "POST",
+        body: JSON.stringify({
+          barcode,
+          name,
+          invoicePrice: Number(invoicePrice || 0),
+          billingPrice: Number(billingPrice || 0),
+          stock: Number(stock || 0),
+          supplierName: supplierName || null,
+          supplierInvoiceNo: supplierInvoiceNo || null,
+          supplierPaymentMethod: supplierPaymentMethod || null,
+          receivedDate: receivedDate || null,
+          invoicePhoto: invoicePhoto || null,
+        }),
+      });
+      setMsg("Product created");
+      setBarcode("");
+      setName("");
+      setInvoicePrice("");
+      setBillingPrice("");
+      setStock("");
+      setSupplierName("");
+      setSupplierInvoiceNo("");
+      setSupplierPaymentMethod("cash");
+      setReceivedDate(todayStr());
+      setInvoicePhoto("");
+      setShowAddStock(false);
+      await loadProducts(0);
+    } catch (e) {
+      setMsg("Error: " + e.message);
+    }
+  };
+
+  const downloadStockCsv = async () => {
+    try {
+      setLoading(true);
+      const data = await apiFetch("/products");
+      const rows = Array.isArray(data) ? data : [];
+      const csvRows = [
+        ["Barcode", "Name", "Invoice Price", "Billing Price", "Stock", "Total Value", "Supplier"],
+        ...rows.map((p) => [
+          p.barcode ?? "",
+          p.name ?? "",
+          Number(p.invoicePrice || 0),
+          Number(p.price || 0),
+          Number(p.stock || 0),
+          Number(p.price || 0) * Number(p.stock || 0),
+          p.supplierName || "",
+        ]),
+      ];
+      const csv = csvRows.map((r) => r.map((v) => `"${String(v).replace(/"/g, "\"\"")}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "current_stock.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setMsg("Error: " + e.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -118,7 +211,6 @@ export default function Stock() {
     <div className="admin-shell">
       <style>{`
         @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
-
         .admin-shell {
           font-family: "Space Grotesk", sans-serif;
           color: var(--text);
@@ -129,123 +221,52 @@ export default function Stock() {
           min-height: 100vh;
           padding: 24px 20px 40px;
         }
-
-        .admin-content {
-          max-width: 1200px;
-          margin: 0 auto;
-        }
-
-        .topbar {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 16px;
-          flex-wrap: wrap;
-          margin-bottom: 18px;
-        }
-
-        .title h2 {
-          margin: 0;
-          font-size: 26px;
-        }
-
-        .title span {
-          font-size: 13px;
-          color: var(--muted);
-        }
-
-        .actions {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .btn {
-          border: none;
+        .admin-content { max-width: 1200px; margin: 0 auto; }
+        .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+        .title h2 { margin: 0; font-size: 26px; }
+        .title span { font-size: 13px; color: var(--muted); }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .menu-wrap { position: relative; }
+        .menu-panel {
+          position: absolute;
+          top: calc(100% + 6px);
+          right: 0;
+          display: grid;
+          gap: 6px;
+          padding: 8px;
+          background: var(--panel);
+          border: 1px solid var(--border);
           border-radius: 10px;
-          padding: 9px 14px;
-          font-weight: 600;
-          cursor: pointer;
-          background: var(--accent);
-          color: var(--bg);
-          transition: transform 120ms ease, box-shadow 120ms ease;
+          z-index: 20;
+          min-width: 170px;
         }
-
-        .btn.secondary {
-          background: var(--panel);
-          color: var(--text);
-          border: 1px solid var(--border);
-        }
-
-        .btn.ghost {
-          background: transparent;
-          border: 1px solid var(--border);
-          color: var(--text);
-        }
-
-        .banner {
-          background: var(--panel);
-          color: var(--text);
-          border: 1px solid var(--border);
-          padding: 10px 14px;
-          border-radius: 10px;
-          font-weight: 600;
-          margin-bottom: 16px;
-        }
-
-        .panel {
-          background: var(--panel);
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          padding: 14px;
-        }
-
-        .table-tools {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-          margin-bottom: 12px;
-        }
-
-        .table-tools input,
-        .table-tools select {
-          padding: 8px 10px;
-          border-radius: 8px;
-          border: 1px solid var(--border);
-          background: #0f172a;
-          color: var(--text);
-        }
-
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 14px;
-        }
-
-        thead th {
-          text-align: left;
-          padding: 10px;
-          background: rgba(255, 255, 255, 0.04);
-          border-bottom: 1px solid var(--border);
-        }
-
-        tbody td {
-          padding: 10px;
-          border-bottom: 1px solid var(--border);
-        }
-
-        tbody tr:hover {
-          background: #ffffff;
-          color: #000000;
-        }
-        tbody tr:hover td {
-          color: #000000;
-        }
-
-        @media (max-width: 640px) {
-          .title h2 { font-size: 22px; }
+        .btn { border: none; border-radius: 10px; padding: 9px 14px; font-weight: 600; cursor: pointer; background: var(--accent); color: var(--bg); }
+        .btn.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+        .btn.danger { background: #dc2626; color: #fff; border: 1px solid #b91c1c; }
+        .btn.add-stock { background: #86efac; color: #052e16; border: 1px solid #4ade80; }
+        .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+        .banner { background: var(--panel); color: var(--text); border: 1px solid var(--border); padding: 10px 14px; border-radius: 10px; font-weight: 600; margin-bottom: 16px; }
+        .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+        .table-tools { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+        .table-tools input, .table-tools select, .form input, .form select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: #fff; color: #000; }
+        .form input, .form select { width: 100%; box-sizing: border-box; }
+        .form { display: grid; gap: 10px; }
+        .form-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 10px; column-gap: 0; }
+        .form-full { grid-column: 1 / -1; }
+        .input-group label { font-size: 12px; font-weight: 600; color: var(--muted); }
+        .payment-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        thead th { text-align: left; padding: 10px; background: rgba(255, 255, 255, 0.04); border-bottom: 1px solid var(--border); }
+        tbody td { padding: 10px; border-bottom: 1px solid var(--border); }
+        tbody tr:hover { background: #ffffff; color: #000000; }
+        tbody tr:hover td { color: #000000; }
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 9999; }
+        .modal { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 16px; width: min(640px, 100%); max-height: 88vh; overflow: auto; }
+        @media (max-width: 720px) {
+          .form-grid-2 { grid-template-columns: 1fr; }
+          .modal-actions { justify-content: stretch; }
+          .modal-actions .btn { flex: 1; }
         }
       `}</style>
 
@@ -256,7 +277,40 @@ export default function Stock() {
             <span>Search, edit, and delete items</span>
           </div>
           <div className="actions">
-            <button className="btn ghost" onClick={() => navigate("/admin")}>Back</button>
+            <button className="btn ghost" onClick={() => navigate(isAdmin ? "/admin" : "/cashier")}>🏠 Home</button>
+            <div className="menu-wrap" ref={reportsMenuRef}>
+              <button className="btn ghost" onClick={() => setShowReportsMenu((v) => !v)}>Reports</button>
+              {showReportsMenu && (
+                <div className="menu-panel">
+                  <button className="btn secondary" onClick={() => { setShowReportsMenu(false); navigate("/reports"); }}>
+                    Sales Reports
+                  </button>
+                  <button className="btn secondary" onClick={() => { setShowReportsMenu(false); navigate("/reports/items"); }}>
+                    Item-wise Report
+                  </button>
+                </div>
+              )}
+            </div>
+            <button className="btn ghost" onClick={() => navigate("/returns")}>Returns</button>
+            <div className="menu-wrap" ref={stockMenuRef}>
+              <button className="btn ghost" onClick={() => setShowStockMenu((v) => !v)}>Stock</button>
+              {showStockMenu && (
+                <div className="menu-panel">
+                  <button className="btn secondary" onClick={() => { setShowStockMenu(false); navigate("/stock"); }}>
+                    Current Stock
+                  </button>
+                  <button className="btn secondary" onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }}>
+                    Returned Stock
+                  </button>
+                </div>
+              )}
+            </div>
+            {isAdmin && <button className="btn ghost" onClick={() => navigate("/customers")}>Customers</button>}
+            {isAdmin && <button className="btn secondary" onClick={() => navigate("/end-day")}>End Day</button>}
+            {isAdmin && <button className="btn ghost" onClick={() => navigate("/billing")}>Billing</button>}
+            <button className="btn danger" onClick={doLogout}>Logout</button>
+            {isAdmin && <button className="btn add-stock" onClick={() => setShowAddStock(true)}>Add Stock</button>}
+            <button className="btn secondary" onClick={() => window.print()}>Print</button>
           </div>
         </div>
 
@@ -265,8 +319,8 @@ export default function Stock() {
         <div className="panel">
           <div className="table-tools">
             <div>
-              <h3 style={{ margin: 0 }}>Products</h3>
-              <span style={{ color: "var(--muted)", fontSize: 12 }}>Search, edit, and delete items</span>
+              <h3 style={{ margin: 0 }}>Current Stock</h3>
+              <span style={{ color: "var(--muted)", fontSize: 12 }}>Auto-loaded on page open</span>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input placeholder="Search by name or barcode" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -279,197 +333,145 @@ export default function Stock() {
                 <option value="asc">Ascending</option>
                 <option value="desc">Descending</option>
               </select>
-              {!productsLoaded && (
-                <button className="btn secondary" type="button" onClick={() => loadProducts(0)} disabled={loading}>
-                  Load Products
-                </button>
-              )}
-              {productsLoaded && (
-                <button className="btn secondary" type="button" onClick={() => loadProducts(page)} disabled={loading}>
-                  Refresh
-                </button>
-              )}
+              <button className="btn secondary" type="button" onClick={() => loadProducts(page)} disabled={loading}>
+                Refresh
+              </button>
+              <button className="btn secondary" type="button" onClick={downloadStockCsv} disabled={loading}>
+                Download Excel
+              </button>
             </div>
           </div>
 
-          {!productsLoaded ? (
-            <div style={{ color: "var(--muted)", fontSize: 12 }}>
-              Products are paused to keep startup fast. Click ???Load Products??? when needed.
-            </div>
-          ) : (
-            <>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Barcode</th>
-                    <th>Name</th>
-                    <th>Invoice Price</th>
-                    <th>Billing Price</th>
-                    <th>Stock</th>
-                    <th>Total Value</th>
-                    <th>Supplier</th>
-                    <th>Invoice No</th>
-                    <th>Received</th>
-                    <th>Photo</th>
-                    <th>Actions</th>
+          <table>
+            <thead>
+              <tr>
+                <th>Barcode</th>
+                <th>Name</th>
+                <th>Invoice Price</th>
+                <th>Billing Price</th>
+                <th>Stock</th>
+                <th>Total Value</th>
+                <th>Supplier</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleProducts.map((p) => {
+                const isEditing = editingBarcode === p.barcode;
+                return (
+                  <tr key={p.barcode}>
+                    <td>{p.barcode}</td>
+                    <td>
+                      {isEditing ? (
+                        <input value={editValues.name} onChange={(e) => setEditValues((prev) => ({ ...prev, name: e.target.value }))} />
+                      ) : p.name}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input type="number" value={editValues.invoicePrice} onChange={(e) => setEditValues((prev) => ({ ...prev, invoicePrice: e.target.value }))} />
+                      ) : formatNumber(p.invoicePrice || 0)}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input type="number" value={editValues.billingPrice} onChange={(e) => setEditValues((prev) => ({ ...prev, billingPrice: e.target.value }))} />
+                      ) : formatNumber(p.price || 0)}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input type="number" value={editValues.stock} onChange={(e) => setEditValues((prev) => ({ ...prev, stock: e.target.value }))} />
+                      ) : formatNumber(p.stock || 0)}
+                    </td>
+                    <td>{formatNumber(Number(p.price || 0) * Number(p.stock || 0))}</td>
+                    <td>{p.supplierName || "-"}</td>
+                    <td>
+                      {isAdmin ? (
+                        isEditing ? (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button className="btn" type="button" onClick={() => saveEdit(p.barcode)}>Save</button>
+                            <button className="btn secondary" type="button" onClick={cancelEdit}>Cancel</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button className="btn secondary" type="button" onClick={() => startEdit(p)}>Edit</button>
+                            <button className="btn ghost" type="button" onClick={() => deleteProduct(p.barcode)}>Delete</button>
+                          </div>
+                        )
+                      ) : (
+                        <span style={{ color: "var(--muted)" }}>Read-only</span>
+                      )}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {visibleProducts.map((p) => {
-                    const isEditing = editingBarcode === p.barcode;
-                    return (
-                      <tr key={p.barcode}>
-                        <td>{p.barcode}</td>
-                        <td>
-                          {isEditing ? (
-                            <input
-                              value={editValues.name}
-                              onChange={(e) => setEditValues((prev) => ({ ...prev, name: e.target.value }))}
-                            />
-                          ) : (
-                            p.name
-                          )}
-                        </td>
-                        <td>
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              value={editValues.price}
-                              onChange={(e) => setEditValues((prev) => ({ ...prev, price: e.target.value }))}
-                            />
-                          ) : (
-                            p.price
-                          )}
-                        </td>
-                        <td>
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              value={editValues.billingPrice}
-                              onChange={(e) => setEditValues((prev) => ({ ...prev, billingPrice: e.target.value }))}
-                            />
-                          ) : (
-                            p.billingPrice
-                          )}
-                        </td>
-                        <td>
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              value={editValues.stock}
-                              onChange={(e) => setEditValues((prev) => ({ ...prev, stock: e.target.value }))}
-                            />
-                          ) : (
-                            p.stock
-                          )}
-                        </td>
-                        <td>{Number(p.price || 0) * Number(p.stock || 0)}</td>
-                        <td>{p.supplierName || "-"}</td>
-                        <td>{p.supplierInvoiceNo || "-"}</td>
-                        <td>{p.receivedDate ? new Date(p.receivedDate).toLocaleDateString() : "-"}</td>
-                        <td>
-                          {p.invoicePhoto ? (
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button
-                                className="btn ghost"
-                                type="button"
-                                onClick={() => setPreviewImage(normalizeInvoicePhoto(p.invoicePhoto))}
-                              >
-                                View
-                              </button>
-                              <button
-                                className="btn ghost"
-                                type="button"
-                                onClick={() => window.open(normalizeInvoicePhoto(p.invoicePhoto), "_blank")}
-                              >
-                                Open
-                              </button>
-                            </div>
-                          ) : "-"}
-                        </td>
-                        <td>
-                          {isEditing ? (
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button className="btn" type="button" onClick={() => saveEdit(p.barcode)}>
-                                Save
-                              </button>
-                              <button className="btn secondary" type="button" onClick={cancelEdit}>
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button className="btn secondary" type="button" onClick={() => startEdit(p)}>
-                                Edit
-                              </button>
-                              <button className="btn ghost" type="button" onClick={() => deleteProduct(p.barcode)}>
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {visibleProducts.length === 0 && (
-                    <tr>
-                      <td colSpan="11" style={{ textAlign: "center", padding: 16 }}>
-                        No products match your filters
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                );
+              })}
+              {visibleProducts.length === 0 && (
+                <tr>
+                  <td colSpan="8" style={{ textAlign: "center", padding: 16 }}>No products match your filters</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
 
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, fontSize: 12 }}>
-                <button
-                  className="btn secondary"
-                  type="button"
-                  disabled={loading || page === 0}
-                  onClick={() => loadProducts(page - 1)}
-                >
-                  Prev
-                </button>
-                <span>
-                  Page {page + 1} of {Math.max(1, Math.ceil(productsTotal / pageSize))}
-                </span>
-                <button
-                  className="btn secondary"
-                  type="button"
-                  disabled={loading || (page + 1) * pageSize >= productsTotal}
-                  onClick={() => loadProducts(page + 1)}
-                >
-                  Next
-                </button>
-              </div>
-            </>
-          )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, fontSize: 12 }}>
+            <button className="btn secondary" type="button" disabled={loading || page === 0} onClick={() => loadProducts(page - 1)}>Prev</button>
+            <span>Page {page + 1} of {Math.max(1, Math.ceil(productsTotal / pageSize))}</span>
+            <button className="btn secondary" type="button" disabled={loading || (page + 1) * pageSize >= productsTotal} onClick={() => loadProducts(page + 1)}>Next</button>
+          </div>
         </div>
       </div>
 
-      {previewImage ? (
-        <div className="overlay" onClick={() => setPreviewImage("")}>
+      {showAddStock && isAdmin && (
+        <div className="overlay" onClick={() => setShowAddStock(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>Invoice Photo</h3>
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <img
-                src={previewImage}
-                alt="Invoice"
-                style={{ maxWidth: "100%", maxHeight: "65vh", borderRadius: 8, border: "1px solid var(--border)" }}
-              />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <h3 style={{ margin: 0 }}>Add Stock</h3>
+              <button className="btn ghost" type="button" onClick={() => setShowAddStock(false)}>Close</button>
             </div>
-            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button className="btn secondary" type="button" onClick={() => window.open(previewImage, "_blank")}>
-                Open in New Tab
-              </button>
-              <button className="btn" type="button" onClick={() => setPreviewImage("")}>
-                Close
-              </button>
-            </div>
+            <form className="form" onSubmit={createProduct}>
+              <div className="form-grid-2">
+                <div className="input-group"><input aria-label="Barcode" placeholder="Barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} required /></div>
+                <div className="input-group"><input aria-label="Name" placeholder="Product name" value={name} onChange={(e) => setName(e.target.value)} required /></div>
+                <div className="input-group"><input type="number" aria-label="Invoice price" placeholder="Invoice price" value={invoicePrice} onChange={(e) => setInvoicePrice(e.target.value)} required /></div>
+                <div className="input-group"><input type="number" aria-label="Billing price" placeholder="Billing price" value={billingPrice} onChange={(e) => setBillingPrice(e.target.value)} required /></div>
+                <div className="input-group"><input type="number" aria-label="Stock" placeholder="Stock quantity" value={stock} onChange={(e) => setStock(e.target.value)} /></div>
+                <div className="input-group"><input type="date" aria-label="Received date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} /></div>
+                <div className="input-group form-full"><input aria-label="Supplier name" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="Supplier name" /></div>
+                <div className="input-group form-full"><input aria-label="Supplier invoice no" value={supplierInvoiceNo} onChange={(e) => setSupplierInvoiceNo(e.target.value)} placeholder="Supplier invoice no" /></div>
+              </div>
+              <div className="payment-row">
+                <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>Supplier Payment Method</span>
+                <label><input type="radio" name="spm" checked={supplierPaymentMethod === "cash"} onChange={() => setSupplierPaymentMethod("cash")} /> cash</label>
+                <label><input type="radio" name="spm" checked={supplierPaymentMethod === "credit"} onChange={() => setSupplierPaymentMethod("credit")} /> credit</label>
+                <label><input type="radio" name="spm" checked={supplierPaymentMethod === "cheque"} onChange={() => setSupplierPaymentMethod("cheque")} /> cheque</label>
+              </div>
+              <label className="btn ghost" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                Invoice Photo
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: "none" }}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => setInvoicePhoto(String(reader.result || ""));
+                    reader.readAsDataURL(file);
+                  }}
+                />
+              </label>
+              {invoicePhoto ? <img src={invoicePhoto} alt="Invoice preview" style={{ maxWidth: 220, borderRadius: 8 }} /> : null}
+              <div className="modal-actions">
+                <button className="btn secondary" type="button" onClick={() => setShowAddStock(false)}>Cancel</button>
+                <button className="btn" type="submit" disabled={loading}>Save Product</button>
+              </div>
+            </form>
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
+
+
+
 

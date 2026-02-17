@@ -1,4 +1,5 @@
 import React from "react";
+import { formatMoney, formatNumber } from "./utils/format";
 
 export default function ReceiptPrint(props) {
   const {
@@ -32,6 +33,8 @@ export default function ReceiptPrint(props) {
     }))
     .filter((i) => i.qty > 0);
   const freeItemsText = freeItems.map((i) => `${i.name} x${i.qty}`).join(", ");
+  const money = (v) => formatMoney(v);
+  const count = (v) => formatNumber(v);
 
   if (layoutMode === "a4") {
     return (
@@ -89,10 +92,10 @@ export default function ReceiptPrint(props) {
               return (
                 <tr key={`${i.barcode}-${i.name}`}>
                   <td style={{ padding: "6px 0" }}>{i.name}</td>
-                  <td style={{ textAlign: "right" }}>{qty}</td>
-                  <td style={{ textAlign: "right" }}>{price.toFixed(2)}</td>
-                  <td style={{ textAlign: "right" }}>{itemDiscount ? itemDiscount.toFixed(2) : "-"}</td>
-                  <td style={{ textAlign: "right" }}>{lineTotal.toFixed(2)}</td>
+                  <td style={{ textAlign: "right" }}>{count(qty)}</td>
+                  <td style={{ textAlign: "right" }}>{money(price)}</td>
+                  <td style={{ textAlign: "right" }}>{itemDiscount ? money(itemDiscount) : "-"}</td>
+                  <td style={{ textAlign: "right" }}>{money(lineTotal)}</td>
                 </tr>
               );
             })}
@@ -111,13 +114,13 @@ export default function ReceiptPrint(props) {
         {showTotals && (
           <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Subtotal</span><span>{Number(subtotal).toFixed(2)}</span>
+              <span>Subtotal</span><span>{money(subtotal)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Discount</span><span>{Number(discount).toFixed(2)}</span>
+              <span>Discount</span><span>{money(discount)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
-              <span>Total</span><span>{Number(grandTotal).toFixed(2)}</span>
+              <span>Total</span><span>{money(grandTotal)}</span>
             </div>
           </div>
         )}
@@ -132,10 +135,10 @@ export default function ReceiptPrint(props) {
             {paymentMethod === "cash" && (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Cash</span><span>{Number(cashReceived || 0).toFixed(2)}</span>
+                  <span>Cash</span><span>{money(cashReceived || 0)}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Change</span><span>{Number(balance || 0).toFixed(2)}</span>
+                  <span>Change</span><span>{money(balance || 0)}</span>
                 </div>
               </>
             )}
@@ -205,13 +208,13 @@ export default function ReceiptPrint(props) {
           <div key={`${i.barcode}-${i.name}`} className="item">
             <div className="itemName">{i.name}</div>
             <div className="row">
-              <span>{qty} x {price.toFixed(2)}</span>
-              <span>{lineTotal.toFixed(2)}</span>
+              <span>{count(qty)} x {money(price)}</span>
+              <span>{money(lineTotal)}</span>
             </div>
             {itemDiscount > 0 && (
               <div className="row small">
                 <span>Item Discount</span>
-                <span>-{itemDiscount.toFixed(2)}</span>
+                <span>-{money(itemDiscount)}</span>
               </div>
             )}
           </div>
@@ -229,9 +232,9 @@ export default function ReceiptPrint(props) {
 
       {showTotals && (
         <>
-          <div className="row"><span>Subtotal</span><span>{Number(subtotal).toFixed(2)}</span></div>
-          <div className="row"><span>Discount</span><span>{Number(discount).toFixed(2)}</span></div>
-          <div className="row bold"><span>Total</span><span>{Number(grandTotal).toFixed(2)}</span></div>
+          <div className="row"><span>Subtotal</span><span>{money(subtotal)}</span></div>
+          <div className="row"><span>Discount</span><span>{money(discount)}</span></div>
+          <div className="row bold"><span>Total</span><span>{money(grandTotal)}</span></div>
         </>
       )}
 
@@ -242,8 +245,8 @@ export default function ReceiptPrint(props) {
           <div className="row"><span>Payment</span><span>{paymentMethod}</span></div>
           {paymentMethod === "cash" && (
             <>
-              <div className="row"><span>Cash</span><span>{Number(cashReceived || 0).toFixed(2)}</span></div>
-              <div className="row"><span>Change</span><span>{Number(balance || 0).toFixed(2)}</span></div>
+              <div className="row"><span>Cash</span><span>{money(cashReceived || 0)}</span></div>
+              <div className="row"><span>Change</span><span>{money(balance || 0)}</span></div>
             </>
           )}
         </>
@@ -258,4 +261,3 @@ export default function ReceiptPrint(props) {
     </div>
   );
 }
-

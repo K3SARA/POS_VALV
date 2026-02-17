@@ -1,11 +1,16 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
 import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
+import { formatNumber } from "./utils/format";
 
 export default function Returns({ onLogout }) {
   const [filterReason, setFilterReason] = useState("ALL"); // ALL | GOOD | DAMAGED | EXPIRED
   const navigate = useNavigate();
+  const [showReportsMenu, setShowReportsMenu] = useState(false);
+  const [showStockMenu, setShowStockMenu] = useState(false);
+  const reportsMenuRef = React.useRef(null);
+  const stockMenuRef = React.useRef(null);
 
   const [saleId, setSaleId] = useState("");
   const [sale, setSale] = useState(null);
@@ -39,13 +44,26 @@ export default function Returns({ onLogout }) {
   const [showExchangeDropdown, setShowExchangeDropdown] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
 
-  const [selected, setSelected] = useState({}); // { saleItemId: qty }
+  const [selected, setSelected] = useState({}); // { saleItemId: { qty, freeQty } }
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
   const [exchangeMsg, setExchangeMsg] = useState("");
 
+  useEffect(() => {
+    const onDocClick = (event) => {
+      if (reportsMenuRef.current && !reportsMenuRef.current.contains(event.target)) {
+        setShowReportsMenu(false);
+      }
+      if (stockMenuRef.current && !stockMenuRef.current.contains(event.target)) {
+        setShowStockMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
-  // ✅ returns list state MUST be here (top-level), not inside submitReturn
+
+  // âœ… returns list state MUST be here (top-level), not inside submitReturn
   const [returnsList, setReturnsList] = useState([]);
 
   const saleItems = sale?.saleItems || [];
@@ -182,14 +200,14 @@ export default function Returns({ onLogout }) {
     }
   }, [reasonType]);
 
-  // ✅ Load returns list
+  // âœ… Load returns list
   const loadReturns = async () => {
     try {
       const data = await apiFetch("/returns");
       setReturnsList(Array.isArray(data) ? data : []);
     } catch (e) {
       // optional: keep silent
-      // setMsg("❌ " + e.message);
+      // setMsg("âŒ " + e.message);
     }
   };
 
@@ -233,7 +251,7 @@ export default function Returns({ onLogout }) {
     setTimeout(() => window.print(), 100);
   };
 
-  // ✅ Filter buttons use this
+  // âœ… Filter buttons use this
   const filteredReturns = useMemo(() => {
     if (filterReason === "ALL") return returnsList;
 
@@ -302,7 +320,7 @@ export default function Returns({ onLogout }) {
 
   const totalRefund = useMemo(() => {
     return saleItems.reduce((sum, si) => {
-      const q = Number(selected[si.id] || 0);
+      const q = Number(selected[si.id]?.qty || 0);
       const price = Number(si.price || 0);
       return sum + q * price;
     }, 0);
@@ -321,11 +339,34 @@ export default function Returns({ onLogout }) {
         (r.items || []).forEach((it) => {
           const id = Number(it.saleItemId);
           if (!Number.isFinite(id)) return;
-          map[id] = (map[id] || 0) + Number(it.qty || 0);
+          const totalUnits = Number(it.qty || 0);
+          const paidPrice = Number(it.price || 0);
+          const paidUnits = paidPrice > 0 ? Number(it.lineTotal || 0) / paidPrice : totalUnits;
+          const safePaidUnits = Math.max(0, Math.min(totalUnits, paidUnits));
+          const freeUnits = Math.max(0, totalUnits - safePaidUnits);
+          const current = map[id] || { units: 0, paid: 0, free: 0 };
+          map[id] = {
+            units: current.units + totalUnits,
+            paid: current.paid + safePaidUnits,
+            free: current.free + freeUnits,
+          };
         });
       });
     return map;
   }, [returnsList, sale?.id]);
+
+  const getReturnLimits = (si) => {
+    const returned = returnedByItem[si.id] || { units: 0, paid: 0, free: 0 };
+    const soldPaid = Number(si.qty || 0);
+    const soldFree = Number(si.freeQty || 0);
+    return {
+      paidRemaining: Math.max(0, soldPaid - Number(returned.paid || 0)),
+      freeRemaining: Math.max(0, soldFree - Number(returned.free || 0)),
+      returnedPaid: Number(returned.paid || 0),
+      returnedFree: Number(returned.free || 0),
+      returnedUnits: Number(returned.units || 0),
+    };
+  };
 
   const loadSale = async (overrideId) => {
     setMsg("");
@@ -345,9 +386,9 @@ export default function Returns({ onLogout }) {
       setLoading(true);
       const data = await apiFetch(`/sales/${sid}`);
       setSale(data);
-      setMsg("✅ Sale loaded. Select items to return.");
+      setMsg("âœ… Sale loaded. Select items to return.");
     } catch (e) {
-      setMsg("❌ " + e.message);
+      setMsg("âŒ " + e.message);
     } finally {
       setLoading(false);
     }
@@ -361,7 +402,7 @@ export default function Returns({ onLogout }) {
       const data = await apiFetch(`/returns/${returnId}`);
       setViewReturn(data);
     } catch (e) {
-      setViewErr("❌ " + e.message);
+      setViewErr("âŒ " + e.message);
     }
   };
 
@@ -391,7 +432,7 @@ export default function Returns({ onLogout }) {
       setEditType(type);
       setEditReason(type === "OTHER" ? reasonText : "");
     } catch (e) {
-      setEditErr("❌ " + e.message);
+      setEditErr("âŒ " + e.message);
     }
   };
 
@@ -406,11 +447,11 @@ export default function Returns({ onLogout }) {
   const saveEditReturn = async () => {
     if (!editReturn) return;
     if (!editType) {
-      setEditErr("❌ Select a return type");
+      setEditErr("âŒ Select a return type");
       return;
     }
     if (editType === "OTHER" && !String(editReason || "").trim()) {
-      setEditErr("❌ Reason is required");
+      setEditErr("âŒ Reason is required");
       return;
     }
     try {
@@ -424,9 +465,9 @@ export default function Returns({ onLogout }) {
       });
       setEditReturn(res);
       await loadReturns();
-      setEditErr("✅ Return updated");
+      setEditErr("âœ… Return updated");
     } catch (e) {
-      setEditErr("❌ " + e.message);
+      setEditErr("âŒ " + e.message);
     } finally {
       setSavingEdit(false);
     }
@@ -438,26 +479,30 @@ export default function Returns({ onLogout }) {
     try {
       await apiFetch(`/returns/${returnId}`, { method: "DELETE" });
       await loadReturns();
-      setMsg("✅ Return deleted");
+      setMsg("âœ… Return deleted");
     } catch (e) {
-      setMsg("❌ " + e.message);
+      setMsg("âŒ " + e.message);
     }
   };
 
-  const setQty = (saleItemId, qty) => {
+  const setSelectedQty = (saleItemId, key, qty) => {
     const q = Number(qty);
     if (!Number.isFinite(q) || q < 0) return;
-
-    // limit to max sold qty
     const item = saleItems.find((x) => x.id === saleItemId);
-    const returned = Number(returnedByItem[saleItemId] || 0);
-    const max = Math.max(0, Number(item?.qty || 0) - returned);
+    if (!item) return;
+    const limits = getReturnLimits(item);
+    const max = key === "freeQty" ? limits.freeRemaining : limits.paidRemaining;
     const safe = Math.min(q, max);
 
     setSelected((prev) => {
-      const next = { ...prev }; // ✅ fixed typo
-      if (!safe) delete next[saleItemId];
-      else next[saleItemId] = safe;
+      const current = prev[saleItemId] || { qty: 0, freeQty: 0 };
+      const nextEntry = { ...current, [key]: safe };
+      const next = { ...prev };
+      if (!nextEntry.qty && !nextEntry.freeQty) {
+        delete next[saleItemId];
+      } else {
+        next[saleItemId] = nextEntry;
+      }
       return next;
     });
   };
@@ -467,35 +512,46 @@ export default function Returns({ onLogout }) {
 
     const sid = Number(String(saleId || "").trim());
     if (!sid || sid < 1) {
-      setMsg("❌ Enter a valid Sale ID");
+      setMsg("âŒ Enter a valid Sale ID");
       return;
     }
 
     const items = Object.entries(selected)
-      .map(([saleItemId, qty]) => ({ saleItemId: Number(saleItemId), qty: Number(qty) }))
-      .filter((x) => x.qty > 0);
+      .map(([saleItemId, v]) => ({
+        saleItemId: Number(saleItemId),
+        qty: Number(v?.qty || 0),
+        freeQty: Number(v?.freeQty || 0),
+      }))
+      .filter((x) => x.qty > 0 || x.freeQty > 0);
 
     if (items.length === 0) {
-      setMsg("❌ Select at least 1 item to return");
+      setMsg("âŒ Select at least 1 item to return");
       return;
     }
 
     for (const it of items) {
       const item = saleItems.find((x) => x.id === it.saleItemId);
-      const returned = Number(returnedByItem[it.saleItemId] || 0);
-      const max = Math.max(0, Number(item?.qty || 0) - returned);
-      if (it.qty > max) {
-        setMsg("❌ Return qty exceeds remaining qty");
+      const limits = getReturnLimits(item || {});
+      if (!item) {
+        setMsg("Invalid sale item in return");
+        return;
+      }
+      if (it.qty > limits.paidRemaining) {
+        setMsg("Return paid qty exceeds remaining paid qty");
+        return;
+      }
+      if (it.freeQty > limits.freeRemaining) {
+        setMsg("Return free qty exceeds remaining free qty");
         return;
       }
     }
 
     if (!reasonType) {
-      setMsg("❌ Select a return type");
+      setMsg("âŒ Select a return type");
       return;
     }
     if (reasonType === "OTHER" && !String(customReason || "").trim()) {
-      setMsg("❌ Reason is required");
+      setMsg("âŒ Reason is required");
       return;
     }
 
@@ -512,15 +568,15 @@ export default function Returns({ onLogout }) {
         }),
       });
 
-      setMsg(`✅ Return saved. Refund: Rs ${res?.totalRefund ?? totalRefund}`);
+      setMsg(`âœ… Return saved. Refund: Rs ${res?.totalRefund ?? totalRefund}`);
 
       // reload sale after return (optional)
       await loadSale();
 
-      // ✅ refresh returns list so filters show new return instantly
+      // âœ… refresh returns list so filters show new return instantly
       await loadReturns();
     } catch (e) {
-      setMsg("❌ " + e.message);
+      setMsg("âŒ " + e.message);
     } finally {
       setLoading(false);
     }
@@ -553,7 +609,7 @@ export default function Returns({ onLogout }) {
       setExchangeBarcode("");
       setExchangeQty(1);
     } catch (e) {
-      setMsg("❌ " + e.message);
+      setMsg("âŒ " + e.message);
     }
   };
 
@@ -594,19 +650,19 @@ export default function Returns({ onLogout }) {
   const submitExchange = async () => {
     setExchangeMsg("");
     if (!reasonType) {
-      setExchangeMsg("❌ Select a return type");
+      setExchangeMsg("âŒ Select a return type");
       return;
     }
     if (reasonType === "OTHER" && !String(customReason || "").trim()) {
-      setExchangeMsg("❌ Reason is required");
+      setExchangeMsg("âŒ Reason is required");
       return;
     }
     if (!sale?.id) {
-      setExchangeMsg("❌ Load a sale first");
+      setExchangeMsg("âŒ Load a sale first");
       return;
     }
     if (exchangeItems.length === 0) {
-      setExchangeMsg("❌ Add at least one exchange item");
+      setExchangeMsg("âŒ Add at least one exchange item");
       return;
     }
 
@@ -640,12 +696,12 @@ export default function Returns({ onLogout }) {
 
       await apiFetch("/sales", { method: "POST", body: JSON.stringify(payload) });
 
-      setExchangeMsg(`✅ Exchange completed. Net: Rs ${netAmount}`);
+      setExchangeMsg(`âœ… Exchange completed. Net: Rs ${netAmount}`);
       setExchangeItems([]);
       setExchangeBarcode("");
       setExchangeQty(1);
     } catch (e) {
-      setExchangeMsg("❌ " + e.message);
+      setExchangeMsg("âŒ " + e.message);
     } finally {
       setLoading(false);
     }
@@ -654,14 +710,36 @@ export default function Returns({ onLogout }) {
   return (
     <div style={styles.page}>
       <div style={styles.header}>
-        <h2 style={styles.title}>↩️ Returns</h2>
-        <div style={styles.row}>
-          <button onClick={() => navigate(-1)} style={styles.btnGhost}>Back</button>
-          <button onClick={onLogout} style={styles.btn}>Logout</button>
+        <h2 style={styles.title}>â†©ï¸ Returns</h2>
+        <div style={{ ...styles.row, flexWrap: "wrap" }}>
+          <button onClick={() => navigate("/admin")} style={styles.btnGhost}>ðŸ  Home</button>
+          <div ref={reportsMenuRef} style={{ position: "relative" }}>
+            <button onClick={() => setShowReportsMenu((v) => !v)} style={styles.btnGhost}>Reports</button>
+            {showReportsMenu && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
+                <button onClick={() => { setShowReportsMenu(false); navigate("/reports"); }} style={styles.btnGhost}>Sales Reports</button>
+                <button onClick={() => { setShowReportsMenu(false); navigate("/reports/items"); }} style={styles.btnGhost}>Item-wise Report</button>
+              </div>
+            )}
+          </div>
+          <button onClick={() => navigate("/returns")} style={styles.btnGhost}>Returns</button>
+          <div ref={stockMenuRef} style={{ position: "relative" }}>
+            <button onClick={() => setShowStockMenu((v) => !v)} style={styles.btnGhost}>Stock</button>
+            {showStockMenu && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
+                <button onClick={() => { setShowStockMenu(false); navigate("/stock"); }} style={styles.btnGhost}>Current Stock</button>
+                <button onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }} style={styles.btnGhost}>Returned Stock</button>
+              </div>
+            )}
+          </div>
+          <button onClick={() => navigate("/customers")} style={styles.btnGhost}>Customers</button>
+          <button onClick={() => navigate("/end-day")} style={styles.btnGhost}>End Day</button>
+          <button onClick={() => navigate("/billing")} style={styles.btnGhost}>Billing</button>
+          <button onClick={onLogout} style={{ ...styles.btn, background: "#dc2626", color: "#fff", border: "1px solid #b91c1c" }}>Logout</button>
         </div>
       </div>
 
-      {/* ✅ Filter buttons */}
+      {/* âœ… Filter buttons */}
       <div style={styles.filters}>
         <button type="button" onClick={() => setFilterReason("ALL")} style={styles.chip(filterReason === "ALL")}>All</button>
         <button type="button" onClick={() => setFilterReason("GOOD")} style={styles.chip(filterReason === "GOOD")}>Good</button>
@@ -727,7 +805,7 @@ export default function Returns({ onLogout }) {
                   >
                     <div style={{ fontWeight: 700 }}>Sale #{s.id}</div>
                     <div style={{ fontSize: 12, color: "#000" }}>
-                      {new Date(s.createdAt).toLocaleString()} • {s.customer?.name || s.customerName || "Walk-in"} • Rs {s.total}
+                      {new Date(s.createdAt).toLocaleString()} â€¢ {s.customer?.name || s.customerName || "Walk-in"} â€¢ Rs {s.total}
                     </div>
                   </div>
                 ))}
@@ -779,7 +857,7 @@ export default function Returns({ onLogout }) {
                 {sale.customer?.address || sale.customerAddress || "-"}
               </div>
               <div><b>Date:</b> {new Date(sale.createdAt).toLocaleString()}</div>
-              <div><b>Total:</b> Rs {sale.total}</div>
+              <div><b>Total:</b> Rs {formatNumber(sale.total)}</div>
             </div>
             <div style={{ minWidth: 260 }}>
               <div style={{ marginBottom: 8 }}>
@@ -802,42 +880,62 @@ export default function Returns({ onLogout }) {
             <thead>
               <tr>
                 <th style={styles.th}>Item</th>
-                <th style={{ ...styles.th, width: 120 }}>Sold Qty</th>
-                <th style={{ ...styles.th, width: 140 }}>Returned Qty</th>
+                <th style={{ ...styles.th, width: 120 }}>Sold Paid</th>
+                <th style={{ ...styles.th, width: 120 }}>Sold Free</th>
+                <th style={{ ...styles.th, width: 140 }}>Returned</th>
                 <th style={{ ...styles.th, width: 140 }}>Price</th>
-                <th style={{ ...styles.th, width: 160 }}>Return Qty</th>
+                <th style={{ ...styles.th, width: 160 }}>Return Paid</th>
+                <th style={{ ...styles.th, width: 160 }}>Return Free</th>
               </tr>
             </thead>
             <tbody>
               {saleItems.map((si) => (
+                (() => {
+                  const limits = getReturnLimits(si);
+                  return (
                 <tr key={si.id}>
                   <td style={styles.td}>
                     <div><b>{si.product?.name || "Item"}</b></div>
                     <div style={styles.meta}>Barcode: {si.product?.barcode}</div>
                   </td>
                   <td style={styles.td}>{si.qty}</td>
-                  <td style={styles.td}>{returnedByItem[si.id] || 0}</td>
+                  <td style={styles.td}>{si.freeQty || 0}</td>
+                  <td style={styles.td}>
+                    {formatNumber(limits.returnedPaid)} paid, {formatNumber(limits.returnedFree)} free
+                  </td>
                   <td style={styles.td}>{si.price}</td>
                   <td style={styles.td}>
                     <input
                       type="number"
                       min="0"
-                      max={Math.max(0, Number(si.qty || 0) - Number(returnedByItem[si.id] || 0))}
-                      value={selected[si.id] || ""}
-                      onChange={(e) => setQty(si.id, e.target.value)}
+                      max={limits.paidRemaining}
+                      value={selected[si.id]?.qty || ""}
+                      onChange={(e) => setSelectedQty(si.id, "qty", e.target.value)}
                       placeholder="0"
                       style={styles.qtyInput}
                     />
-                    <div style={styles.meta}>
-                      Max: {Math.max(0, Number(si.qty || 0) - Number(returnedByItem[si.id] || 0))}
-                    </div>
+                    <div style={styles.meta}>Max: {formatNumber(limits.paidRemaining)}</div>
+                  </td>
+                  <td style={styles.td}>
+                    <input
+                      type="number"
+                      min="0"
+                      max={limits.freeRemaining}
+                      value={selected[si.id]?.freeQty || ""}
+                      onChange={(e) => setSelectedQty(si.id, "freeQty", e.target.value)}
+                      placeholder="0"
+                      style={styles.qtyInput}
+                    />
+                    <div style={styles.meta}>Max: {formatNumber(limits.freeRemaining)}</div>
                   </td>
                 </tr>
+                  );
+                })()
               ))}
 
               {saleItems.length === 0 && (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: "center", padding: 12 }}>No items found</td>
+                  <td colSpan="7" style={{ textAlign: "center", padding: 12 }}>No items found</td>
                 </tr>
               )}
             </tbody>
@@ -981,7 +1079,7 @@ export default function Returns({ onLogout }) {
                           >
                             <div style={{ fontWeight: 700 }}>{p.name}</div>
                             <div style={{ fontSize: 12 }}>
-                              {p.barcode} • Price: {p.price} • Stock: {p.stock}
+                              {p.barcode} â€¢ Price: {p.price} â€¢ Stock: {p.stock}
                             </div>
                           </div>
                         ))
@@ -1051,7 +1149,7 @@ export default function Returns({ onLogout }) {
                   Complete Exchange
                 </button>
                 {exchangeMsg && (
-                  <div style={{ marginTop: 8, color: exchangeMsg.startsWith("✅") ? "#16a34a" : "#ff6b6b" }}>
+                  <div style={{ marginTop: 8, color: exchangeMsg.startsWith("âœ…") ? "#16a34a" : "#ff6b6b" }}>
                     {exchangeMsg}
                   </div>
                 )}
@@ -1089,7 +1187,7 @@ export default function Returns({ onLogout }) {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0 }}>Return Bill</h3>
-              <button onClick={closeView} style={styles.btnGhost}>✕</button>
+              <button onClick={closeView} style={styles.btnGhost}>âœ•</button>
             </div>
 
             {viewErr && <p style={{ color: "#ff6b6b" }}>{viewErr}</p>}
@@ -1149,7 +1247,7 @@ export default function Returns({ onLogout }) {
         </div>
       )}
 
-      {/* ✅ Returns list (filtered) */}
+      {/* âœ… Returns list (filtered) */}
       {filteredReturnsByDate.map((r) => (
         <div key={r.id} style={styles.card}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -1200,10 +1298,10 @@ export default function Returns({ onLogout }) {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0 }}>Edit Return</h3>
-              <button onClick={closeEdit} style={styles.btnGhost}>✕</button>
+              <button onClick={closeEdit} style={styles.btnGhost}>âœ•</button>
             </div>
 
-            {editErr && <p style={{ color: editErr.startsWith("✅") ? "#16a34a" : "#ff6b6b" }}>{editErr}</p>}
+            {editErr && <p style={{ color: editErr.startsWith("âœ…") ? "#16a34a" : "#ff6b6b" }}>{editErr}</p>}
 
             {!editReturn ? (
               <p>Loading return...</p>
@@ -1220,21 +1318,21 @@ export default function Returns({ onLogout }) {
                     onClick={() => setEditType("GOOD")}
                     style={styles.reasonBtn(editType === "GOOD", "#e2e8f0")}
                   >
-                    ✅ Good
+                    âœ… Good
                   </button>
                   <button
                     type="button"
                     onClick={() => setEditType("DAMAGED_EXPIRED")}
                     style={styles.reasonBtn(editType === "DAMAGED_EXPIRED", "#fee2e2")}
                   >
-                    ⚠️ Damaged / Expired
+                    âš ï¸ Damaged / Expired
                   </button>
                   <button
                     type="button"
                     onClick={() => setEditType("OTHER")}
                     style={styles.reasonBtn(editType === "OTHER", "#ffedd5")}
                   >
-                    ✍️ Other
+                    âœï¸ Other
                   </button>
                 </div>
 
@@ -1263,4 +1361,5 @@ export default function Returns({ onLogout }) {
     </div>
   );
 }
+
 

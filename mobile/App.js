@@ -2,7 +2,7 @@ import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { Animated, Platform, Pressable, StyleSheet, Text, View, StatusBar as RNStatusBar } from "react-native";
+import { Animated, Image, Platform, Pressable, StyleSheet, Text, View, StatusBar as RNStatusBar } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
@@ -44,17 +44,29 @@ function HeaderRightLogout() {
   const { logout } = useAuth();
 
   return (
-    <Pressable onPress={logout} style={styles.logoutBtn}>
-      <Text style={styles.logoutText}>Logout</Text>
-    </Pressable>
+    <View style={styles.headerRightWrap}>
+      <Pressable onPress={logout} style={styles.logoutBtn}>
+        <Text style={styles.logoutText}>Logout</Text>
+      </Pressable>
+    </View>
   );
+}
+
+function HeaderCenterLogo() {
+  return <Image source={require("./assets/valvoline.png")} style={styles.headerLogo} resizeMode="contain" />;
 }
 
 function CashierTabs() {
   return (
     <Tabs.Navigator
       screenOptions={({ route }) => ({
+        headerLeft: () => (
+          <Text style={styles.headerLeftTitle}>{route.name}</Text>
+        ),
+        headerTitle: () => <HeaderCenterLogo />,
         headerRight: () => <HeaderRightLogout />,
+        headerRightContainerStyle: { paddingRight: 8 },
+        headerTitleAlign: "center",
         tabBarActiveTintColor: "#1d4ed8",
         tabBarIcon: ({ focused }) => (
           <TabIcon focused={focused} routeName={route.name} />
@@ -281,15 +293,32 @@ const styles = StyleSheet.create({
     color: "#1d4ed8",
   },
   logoutBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    minHeight: 30,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 6,
     backgroundColor: "#111827",
+    alignItems: "center",
+    justifyContent: "center",
   },
   logoutText: {
     color: "#fff",
     fontWeight: "700",
     fontSize: 12,
+  },
+  headerRightWrap: {
+    height: "100%",
+    justifyContent: "center",
+  },
+  headerLogo: {
+    width: 110,
+    height: 28,
+  },
+  headerLeftTitle: {
+    color: "#111827",
+    fontWeight: "700",
+    fontSize: 16,
+    marginLeft: 12,
   },
   loaderWrap: {
     flex: 1,

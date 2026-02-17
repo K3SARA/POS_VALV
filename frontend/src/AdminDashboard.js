@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
+import { formatNumber } from "./utils/format";
 
 export default function AdminDashboard({ onLogout }) {
   const navigate = useNavigate();
@@ -24,8 +25,6 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
   const [users, setUsers] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [sales, setSales] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [customerOutstanding, setCustomerOutstanding] = useState({});
   const [summary, setSummary] = useState({
     totalProducts: 0,
     totalStock: 0,
@@ -52,6 +51,7 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
   const pageSize = 25;
 
   // Customer form
+  const [customerId, setCustomerId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -74,8 +74,9 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [analyticsLoaded, setAnalyticsLoaded] = useState(false);
   const [salesLoaded, setSalesLoaded] = useState(false);
-  const [customersLoaded, setCustomersLoaded] = useState(false);
   const [printPanelId, setPrintPanelId] = useState("");
+  const reportsMenuRef = useRef(null);
+  const stockMenuRef = useRef(null);
 
   
 
@@ -140,30 +141,6 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
     }
   }, []);
 
-  const loadCustomers = useCallback(async () => {
-    try {
-      const [data, outstanding] = await Promise.all([
-        apiFetch("/customers/all"),
-        apiFetch("/reports/customer-outstanding"),
-      ]);
-
-      setCustomers(Array.isArray(data) ? data : []);
-      const map = {};
-      (outstanding?.rows || []).forEach((row) => {
-        if (row?.customerId) {
-          map[row.customerId] = Number(row.outstanding || 0);
-        }
-      });
-      setCustomerOutstanding(map);
-      setCustomersLoaded(true);
-    } catch (e) {
-      console.error(e);
-      setCustomers([]);
-      setCustomerOutstanding({});
-    }
-  }, []);
-
-
   const loadAnalytics = useCallback(async () => {
     setMsg("");
     setLoading(true);
@@ -224,8 +201,20 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
     if (!usersLoaded) loadUsers();
     if (!analyticsLoaded) loadAnalytics();
     if (!salesLoaded) loadSales();
-    if (!customersLoaded) loadCustomers();
-  }, [productsLoaded, usersLoaded, analyticsLoaded, salesLoaded, customersLoaded, loadProducts, loadUsers, loadAnalytics, loadSales, loadCustomers]);
+  }, [productsLoaded, usersLoaded, analyticsLoaded, salesLoaded, loadProducts, loadUsers, loadAnalytics, loadSales]);
+
+  useEffect(() => {
+    const onDocClick = (event) => {
+      if (reportsMenuRef.current && !reportsMenuRef.current.contains(event.target)) {
+        setShowReportsPopup(false);
+      }
+      if (stockMenuRef.current && !stockMenuRef.current.contains(event.target)) {
+        setShowStockMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
   const visibleProducts = useMemo(() => {
     const normalize = (v) => String(v ?? "").toLowerCase();
@@ -288,8 +277,8 @@ invoicePhoto: newInvoicePhoto || null,
     setEditingBarcode(product.barcode);
     setEditValues({
       name: product.name,
-      price: product.price,
-      billingPrice: product.billingPrice,
+      price: product.invoicePrice ?? "",
+      billingPrice: product.price ?? "",
       stock: product.stock,
     });
   };
@@ -305,7 +294,7 @@ invoicePhoto: newInvoicePhoto || null,
         method: "PUT",
         body: JSON.stringify({
           name: editValues.name,
-          price: Number(editValues.price),
+          invoicePrice: Number(editValues.price),
           billingPrice: Number(editValues.billingPrice),
           stock: Number(editValues.stock),
         }),
@@ -384,18 +373,17 @@ const createCustomer = async (e) => {
       await apiFetch("/customers", {
         method: "POST",
         body: JSON.stringify({
+          customerId: customerId.trim() || null,
           name,
           phone: phoneDigits,
           address: customerAddress,
         }),
       });
       setMsg("Customer created");
+      setCustomerId("");
       setCustomerName("");
       setCustomerPhone("");
       setCustomerAddress("");
-      if (customersLoaded) {
-        await loadCustomers();
-      }
     } catch (e) {
       setMsg("Error: " + e.message);
     }
@@ -594,6 +582,11 @@ const createCustomer = async (e) => {
           color: var(--text);
           border: 1px solid var(--border);
         }
+        .btn.danger {
+          background: #dc2626;
+          color: #ffffff;
+          border: 1px solid #b91c1c;
+        }
 
         .btn.ghost {
           background: transparent;
@@ -677,8 +670,8 @@ const createCustomer = async (e) => {
           margin-top: 6px;
           border-radius: 8px;
           border: 1px solid var(--border);
-          background: #0f172a;
-          color: var(--text);
+          background: #ffffff;
+          color: #000000;
           font-size: 14px;
         }
 
@@ -787,7 +780,8 @@ const createCustomer = async (e) => {
             <span>Minimal control center for your POS</span>
           </div>
           <div className="actions">
-            <div className="menu-wrap">
+            <button className="btn ghost" onClick={() => navigate("/admin")}>🏠 Home</button>
+            <div className="menu-wrap" ref={reportsMenuRef}>
               <button
                 className="btn ghost"
                 onClick={() => setShowReportsPopup((v) => !v)}
@@ -819,7 +813,7 @@ const createCustomer = async (e) => {
             </div>
 
             <button className="btn ghost" onClick={() => navigate("/returns")}>Returns</button>
-            <div className="menu-wrap">
+            <div className="menu-wrap" ref={stockMenuRef}>
               <button
                 className="btn ghost"
                 onClick={() => setShowStockMenu((v) => !v)}
@@ -849,9 +843,10 @@ const createCustomer = async (e) => {
                 </div>
               )}
             </div>
+            <button className="btn ghost" onClick={() => navigate("/customers")}>Customers</button>
             <button className="btn secondary" onClick={() => navigate("/end-day")}>End Day</button>
             <button className="btn ghost" onClick={() => navigate("/billing")}>Billing</button>
-            <button className="btn" onClick={onLogout}>Logout</button>
+            <button className="btn danger" onClick={onLogout}>Logout</button>
           </div>
         </div>
         {msg && <div className="banner">{msg}</div>}
@@ -884,8 +879,8 @@ const createCustomer = async (e) => {
                       <tr key={p.barcode}>
                         <td>{p.barcode}</td>
                         <td>{p.name}</td>
-                        <td>{p.stock}</td>
-                        <td>{p.billingPrice ?? p.price}</td>
+                        <td>{formatNumber(p.stock)}</td>
+                        <td>{formatNumber(p.billingPrice ?? p.price)}</td>
                         <td>{p.supplierName || "-"}</td>
                       </tr>
                     ))}
@@ -899,27 +894,27 @@ const createCustomer = async (e) => {
         <div className="cards">
           <div className="card">
             <div className="label">Total Products</div>
-            <div className="value">{summary.totalProducts}</div>
+            <div className="value">{formatNumber(summary.totalProducts)}</div>
           </div>
           <div className="card">
             <div className="label">Total Stock Units</div>
-            <div className="value">{summary.totalStock}</div>
+            <div className="value">{formatNumber(summary.totalStock)}</div>
           </div>
           <div className="card" style={{ cursor: "pointer" }} onClick={openLowStock}>
             <div className="label">Low Stock Items</div>
-            <div className="value">{summary.lowStock}</div>
+            <div className="value">{formatNumber(summary.lowStock)}</div>
           </div>
           <div className="card">
             <div className="label">Today Bills</div>
-            <div className="value">{summary.todayBills}</div>
+            <div className="value">{formatNumber(summary.todayBills)}</div>
           </div>
           <div className="card">
             <div className="label">Today Revenue</div>
-            <div className="value">{Math.round(summary.todayRevenue)}</div>
+            <div className="value">{formatNumber(summary.todayRevenue)}</div>
           </div>
           <div className="card">
             <div className="label">Total Users</div>
-            <div className="value">{summary.totalUsers}</div>
+            <div className="value">{formatNumber(summary.totalUsers)}</div>
           </div>
         </div>
 
@@ -958,7 +953,7 @@ const createCustomer = async (e) => {
                 <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
                   <div className="card">
                     <div className="label">Total Revenue</div>
-                    <div className="value">{Math.round(analytics?.totalRevenue || 0)}</div>
+                    <div className="value">{formatNumber(analytics?.totalRevenue || 0)}</div>
                   </div>
                   <div className="card">
                     <div className="label">Total Bills</div>
@@ -966,7 +961,7 @@ const createCustomer = async (e) => {
                   </div>
                   <div className="card">
                     <div className="label">Avg Ticket</div>
-                    <div className="value">{Math.round(analytics?.avgTicket || 0)}</div>
+                    <div className="value">{formatNumber(analytics?.avgTicket || 0)}</div>
                   </div>
                   <div className="card">
                     <div className="label">Avg Items/Bill</div>
@@ -991,7 +986,7 @@ const createCustomer = async (e) => {
                               }}
                             />
                           </div>
-                          <span style={{ fontSize: 12, textAlign: "right" }}>{Math.round(row.total)}</span>
+                          <span style={{ fontSize: 12, textAlign: "right" }}>{formatNumber(row.total)}</span>
                         </div>
                       ))}
                       {(!analytics || analytics.daily?.length === 0) && (
@@ -1049,42 +1044,48 @@ const createCustomer = async (e) => {
                 Loading sales...
               </div>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Sale #</th>
-                    <th>Date</th>
-                    <th>Customer</th>
-                    <th>Phone</th>
-                    <th>Address</th>
-                    <th>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(sales || []).slice(0, 12).map((s) => {
-                    const customerName = s.customer?.name || s.customerName || "-";
-                    const customerPhone = s.customer?.phone || s.customerPhone || "-";
-                    const customerAddress = s.customer?.address || s.customerAddress || "-";
-                    return (
-                      <tr key={s.id}>
-                        <td>#{s.id}</td>
-                        <td>{s.createdAt ? new Date(s.createdAt).toLocaleString() : "-"}</td>
-                        <td>{customerName}</td>
-                        <td>{customerPhone}</td>
-                        <td>{customerAddress}</td>
-                        <td>{Math.round(Number(s.total || 0))}</td>
-                      </tr>
-                    );
-                  })}
-                  {(!sales || sales.length === 0) && (
+              <div>
+                <table style={{ tableLayout: "fixed", width: "100%" }}>
+                  <thead style={{ display: "table", width: "100%", tableLayout: "fixed" }}>
                     <tr>
-                      <td colSpan="6" style={{ textAlign: "center", padding: 16 }}>
-                        No sales found
-                      </td>
+                      <th>Sale #</th>
+                      <th>Date</th>
+                      <th>Customer</th>
+                      <th>Phone</th>
+                      <th>Address</th>
+                      <th>Total</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                </table>
+                <div style={{ maxHeight: 260, overflowY: "auto", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <table style={{ tableLayout: "fixed", width: "100%" }}>
+                    <tbody style={{ display: "block" }}>
+                      {(sales || []).map((s) => {
+                        const customerName = s.customer?.name || s.customerName || "-";
+                        const customerPhone = s.customer?.phone || s.customerPhone || "-";
+                        const customerAddress = s.customer?.address || s.customerAddress || "-";
+                        return (
+                          <tr key={s.id} style={{ display: "table", width: "100%", tableLayout: "fixed" }}>
+                            <td>#{s.id}</td>
+                            <td>{s.createdAt ? new Date(s.createdAt).toLocaleString() : "-"}</td>
+                            <td>{customerName}</td>
+                            <td>{customerPhone}</td>
+                            <td>{customerAddress}</td>
+                            <td>{formatNumber(s.total || 0)}</td>
+                          </tr>
+                        );
+                      })}
+                      {(!sales || sales.length === 0) && (
+                        <tr style={{ display: "table", width: "100%", tableLayout: "fixed" }}>
+                          <td colSpan="6" style={{ textAlign: "center", padding: 16 }}>
+                            No sales found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
 
@@ -1236,6 +1237,14 @@ const createCustomer = async (e) => {
             </div>
             <form className="form" onSubmit={createCustomer}>
               <div className="input-group">
+                <label>Customer ID</label>
+                <input
+                  value={customerId}
+                  onChange={(e) => setCustomerId(e.target.value)}
+                  placeholder="Optional custom ID"
+                />
+              </div>
+              <div className="input-group">
                 <label>Name</label>
                 <input
                   value={customerName}
@@ -1268,64 +1277,16 @@ const createCustomer = async (e) => {
             </form>
           </div>
 
-          <div className={`panel panel-wide ${printPanelId === "customers" ? "print-panel-area" : ""}`}>
+          <div className="panel panel-wide">
             <div className="table-tools">
               <div>
                 <h3 style={{ margin: 0 }}>Customers</h3>
-                <span style={{ color: "var(--muted)", fontSize: 12 }}>Saved customer details</span>
+                <span style={{ color: "var(--muted)", fontSize: 12 }}>Customer table moved to a dedicated page</span>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button className="btn secondary print-hide" type="button" onClick={() => handlePrintPanel("customers")}>
-                  Print
-                </button>
-                {!customersLoaded && (
-                  <button className="btn secondary print-hide" type="button" onClick={loadCustomers} disabled={loading}>
-                    Load Customers
-                  </button>
-                )}
-                {customersLoaded && (
-                  <button className="btn secondary print-hide" type="button" onClick={loadCustomers} disabled={loading}>
-                    Refresh Customers
-                  </button>
-                )}
-              </div>
+              <button className="btn secondary" type="button" onClick={() => navigate("/customers")}>
+                Open Customers Page
+              </button>
             </div>
-
-            {!customersLoaded ? (
-              <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                Loading customers...
-              </div>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Phone</th>
-                    <th>Address</th>
-                    <th>Outstanding</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(customers || []).map((c) => (
-                    <tr key={c.id}>
-                      <td>{c.name}</td>
-                      <td>{c.phone}</td>
-                      <td>{c.address}</td>
-                      <td>{Number(customerOutstanding?.[c.id] || 0) > 0 ? Math.round(Number(customerOutstanding[c.id])) : "-"}</td>
-                      <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "-"}</td>
-                    </tr>
-                  ))}
-                  {(!customers || customers.length === 0) && (
-                    <tr>
-                      <td colSpan="5" style={{ textAlign: "center", padding: 16 }}>
-                        No customers found
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            )}
           </div>
 
           <div className={`panel panel-wide ${printPanelId === "users" ? "print-panel-area" : ""}`}>

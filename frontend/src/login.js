@@ -49,45 +49,61 @@ export default function Login({ onLogin }) {
   }
 
   return (
-    <div className="auth-page">
-      <h2>POS Login</h2>
+    <div className="login-shell">
+      <div className="login-matte-layer" aria-hidden>
+        <div className="login-blob login-blob-a" />
+        <div className="login-blob login-blob-b" />
+        <div className="login-blob login-blob-c" />
+      </div>
 
-      <form onSubmit={submit}>
-        <div style={{ marginBottom: 10 }}>
-          <label style={{ color: "#ffffff" }}>Username</label>
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            style={{
-              width: "100%",
-              padding: 10,
-              color: "#ffffff",
-              background: "#0f172a",
-              border: "1px solid #334155",
-            }}
-          />
+      <div className="login-inner">
+        <div className="login-title-wrap">
+          <h1 className="login-brand">Apex Logistics</h1>
+          <p className="login-sub">Fast, simple, reliable POS access</p>
         </div>
 
-        <div style={{ marginBottom: 10 }}>
-          <label style={{ color: "#ffffff" }}>Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{
-              width: "100%",
-              padding: 10,
-              color: "#ffffff",
-              background: "#0f172a",
-              border: "1px solid #334155",
-            }}
-          />
+        <div className="login-card">
+          <form onSubmit={submit}>
+            <div className="login-field">
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username"
+                autoComplete="username"
+              />
+            </div>
+
+            <div className="login-field">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                autoComplete="current-password"
+              />
+            </div>
+
+            {error ? <div className="login-error">{error}</div> : null}
+
+            <button className="login-btn" type="submit">Login</button>
+          </form>
         </div>
 
-        {error ? <div style={{ color: "red", marginBottom: 10 }}>{error}</div> : null}
+        <div className="login-logo-card">
+          <div className="login-logo-row">
+            <img src="/valvoline.png" alt="Valvoline" className="login-partner-logo" />
+            <div className="login-logo-divider" />
+            <img src="/soft.png" alt="Soft" className="login-partner-logo" />
+          </div>
+        </div>
 
-        <button style={{ width: "100%", padding: 12 }}>Login</button>
-      </form>
+        <div className="login-powered">
+          Powered by{" "}
+          <a href="https://jncosoftwaresolutions.pages.dev/" target="_blank" rel="noreferrer">
+            J&co.
+          </a>
+        </div>
+      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiFetch } from "../api/client";
+import { formatNumber } from "../utils/format";
 
 function Metric({ label, value, onPress }) {
   const Wrap = onPress ? Pressable : View;
@@ -97,11 +98,11 @@ export default function AdminScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.metricsGrid}>
-          <Metric label="Total Products" value={summary?.totalProducts ?? "-"} />
-          <Metric label="Low Stock" value={summary?.lowStock ?? "-"} onPress={() => void openLowStock()} />
-          <Metric label="Today Bills" value={summary?.todayBills ?? "-"} />
-          <Metric label="Today Revenue" value={Math.round(Number(summary?.todayRevenue || 0))} />
-          <Metric label="Users" value={summary?.totalUsers ?? "-"} />
+          <Metric label="Total Products" value={formatNumber(summary?.totalProducts ?? 0)} />
+          <Metric label="Low Stock" value={formatNumber(summary?.lowStock ?? 0)} onPress={() => void openLowStock()} />
+          <Metric label="Today Bills" value={formatNumber(summary?.todayBills ?? 0)} />
+          <Metric label="Today Revenue" value={formatNumber(summary?.todayRevenue || 0)} />
+          <Metric label="Users" value={formatNumber(summary?.totalUsers ?? 0)} />
         </View>
 
         <Text style={styles.sectionTitle}>Users</Text>
@@ -120,8 +121,8 @@ export default function AdminScreen() {
         {creditAlerts.map((row) => (
           <View key={row.customerId} style={styles.alertCard}>
             <Text style={styles.userName}>{row.name}</Text>
-            <Text style={styles.alertMeta}>Outstanding: {Math.round(Number(row.outstanding || 0))}</Text>
-            <Text style={styles.alertMeta}>Days: {Number(row.days || 0)}</Text>
+            <Text style={styles.alertMeta}>Outstanding: {formatNumber(row.outstanding || 0)}</Text>
+            <Text style={styles.alertMeta}>Days: {formatNumber(row.days || 0)}</Text>
           </View>
         ))}
         {!loading && creditAlerts.length === 0 ? (
@@ -143,7 +144,7 @@ export default function AdminScreen() {
                 <View key={String(item.id || item.barcode)} style={styles.lowStockRow}>
                   <Text style={styles.userName}>{item.name}</Text>
                   <Text style={styles.userMeta}>Barcode: {item.barcode || "-"}</Text>
-                  <Text style={styles.lowStockText}>Stock: {Number(item.stock || 0)}</Text>
+                  <Text style={styles.lowStockText}>Stock: {formatNumber(item.stock || 0)}</Text>
                 </View>
               ))}
               {!lowStockLoading && lowStockItems.length === 0 ? (

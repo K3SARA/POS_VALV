@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./api";
+import { formatNumber } from "./utils/format";
 import { useNavigate } from "react-router-dom";
+
 
 function toDateInputValue(d) {
   const pad = (n) => String(n).padStart(2, "0");
@@ -9,13 +11,22 @@ function toDateInputValue(d) {
 
 export default function ItemWiseReport() {
   const navigate = useNavigate();
+  const reportsMenuRef = useRef(null);
+  const stockMenuRef = useRef(null);
   const today = useMemo(() => new Date(), []);
   const [from, setFrom] = useState(toDateInputValue(today));
   const [to, setTo] = useState(toDateInputValue(today));
-
+  const [showReportsMenu, setShowReportsMenu] = useState(false);
+  const [showStockMenu, setShowStockMenu] = useState(false);
   const [rows, setRows] = useState([]);
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const doLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    navigate("/login");
+  };
 
   async function load() {
     setMsg("");
@@ -36,6 +47,19 @@ export default function ItemWiseReport() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const onDocClick = (event) => {
+      if (reportsMenuRef.current && !reportsMenuRef.current.contains(event.target)) {
+        setShowReportsMenu(false);
+      }
+      if (stockMenuRef.current && !stockMenuRef.current.contains(event.target)) {
+        setShowStockMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
   const totalQty = rows.reduce((a, r) => a + Number(r.qty || 0), 0);
   const totalSales = rows.reduce((a, r) => a + Number(r.total || 0), 0);
 
@@ -43,9 +67,54 @@ export default function ItemWiseReport() {
     <div style={{ padding: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0 }}>Item-wise Report</h2>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn ghost" type="button" onClick={() => navigate("/admin")}>
-            Back
+            Home
+          </button>
+          <div ref={reportsMenuRef} style={{ position: "relative" }}>
+            <button className="btn ghost" type="button" onClick={() => setShowReportsMenu((v) => !v)}>
+              Reports
+            </button>
+            {showReportsMenu && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
+                <button className="btn secondary" type="button" onClick={() => { setShowReportsMenu(false); navigate("/reports"); }}>
+                  Sales Reports
+                </button>
+                <button className="btn secondary" type="button" onClick={() => { setShowReportsMenu(false); navigate("/reports/items"); }}>
+                  Item-wise Report
+                </button>
+              </div>
+            )}
+          </div>
+          <button className="btn ghost" type="button" onClick={() => navigate("/returns")}>
+            Returns
+          </button>
+          <div ref={stockMenuRef} style={{ position: "relative" }}>
+            <button className="btn ghost" type="button" onClick={() => setShowStockMenu((v) => !v)}>
+              Stock
+            </button>
+            {showStockMenu && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
+                <button className="btn secondary" type="button" onClick={() => { setShowStockMenu(false); navigate("/stock"); }}>
+                  Current Stock
+                </button>
+                <button className="btn secondary" type="button" onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }}>
+                  Returned Stock
+                </button>
+              </div>
+            )}
+          </div>
+          <button className="btn ghost" type="button" onClick={() => navigate("/customers")}>
+            Customers
+          </button>
+          <button className="btn secondary" type="button" onClick={() => navigate("/end-day")}>
+            End Day
+          </button>
+          <button className="btn ghost" type="button" onClick={() => navigate("/billing")}>
+            Billing
+          </button>
+          <button className="btn" type="button" onClick={doLogout} style={{ background: "#dc2626", color: "#fff", border: "1px solid #b91c1c" }}>
+            Logout
           </button>
           <button className="btn secondary" type="button" onClick={load} disabled={loading}>
             Refresh
@@ -74,7 +143,7 @@ export default function ItemWiseReport() {
         <h3 style={{ marginTop: 0 }}>Summary</h3>
         <div style={{ lineHeight: 1.9 }}>
           <div>Total items sold (qty): <b>{totalQty}</b></div>
-          <div>Total sales: <b>Rs {Math.round(totalSales)}</b></div>
+          <div>Total sales: <b>Rs {formatNumber(totalSales)}</b></div>
         </div>
       </div>
 
@@ -97,10 +166,10 @@ export default function ItemWiseReport() {
                 <td style={{ borderBottom: "1px solid #f1f1f1", padding: 10 }}>{r.barcode || "-"}</td>
                 <td style={{ borderBottom: "1px solid #f1f1f1", padding: 10 }}>{r.name || "-"}</td>
                 <td style={{ borderBottom: "1px solid #f1f1f1", padding: 10, textAlign: "right" }}>
-                  {Number(r.qty || 0)}
+                  {formatNumber(r.qty || 0)}
                 </td>
                 <td style={{ borderBottom: "1px solid #f1f1f1", padding: 10, textAlign: "right" }}>
-                  Rs {Math.round(Number(r.total || 0))}
+                  Rs {formatNumber(r.total || 0)}
                 </td>
               </tr>
             ))}
@@ -117,3 +186,4 @@ export default function ItemWiseReport() {
     </div>
   );
 }
+

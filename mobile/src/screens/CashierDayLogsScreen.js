@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { apiFetch } from "../api/client";
+import { formatNumber } from "../utils/format";
 
 function todayDateInput() {
   const d = new Date();
@@ -66,8 +67,8 @@ export default function CashierDayLogsScreen() {
           <Text style={styles.meta}>Started: {row.startedAt ? new Date(row.startedAt).toLocaleString() : "-"}</Text>
           <Text style={styles.meta}>Ended: {row.endedAt ? new Date(row.endedAt).toLocaleString() : "Active"}</Text>
           <Text style={styles.meta}>Auto Ended: {row.autoEnded ? "Yes" : "No"}</Text>
-          <Text style={styles.meta}>Sales Count: {Number(row.salesCount || 0)}</Text>
-          <Text style={styles.meta}>Sales Total: {Math.round(Number(row.salesTotal || 0))}</Text>
+          <Text style={styles.meta}>Sales Count: {formatNumber(row.salesCount || 0)}</Text>
+          <Text style={styles.meta}>Sales Total: {formatNumber(row.salesTotal || 0)}</Text>
         </View>
       ))}
       {!loading && rows.length === 0 ? <Text style={styles.empty}>No logs found for selected dates</Text> : null}

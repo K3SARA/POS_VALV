@@ -17,6 +17,7 @@ import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { formatNumber } from "../utils/format";
 
 function formatDateInput(date) {
   const y = date.getFullYear();
@@ -30,14 +31,15 @@ const ProductCard = React.memo(function ProductCard({ item }) {
     <View style={styles.card}>
       <Text style={styles.name}>{item.name}</Text>
       <Text style={styles.meta}>Barcode: {item.barcode}</Text>
-      <Text style={styles.meta}>Price: {Number(item.price || 0)}</Text>
-      <Text style={styles.meta}>Stock: {Number(item.stock || 0)}</Text>
+      <Text style={styles.meta}>Price: {formatNumber(item.price || 0)}</Text>
+      <Text style={styles.meta}>Stock: {formatNumber(item.stock || 0)}</Text>
     </View>
   );
 });
 
 export default function ProductsScreen() {
   const { role } = useAuth();
+  const placeholderColor = "#6b7280";
   const [products, setProducts] = useState([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -45,6 +47,8 @@ export default function ProductsScreen() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [returnsList, setReturnsList] = useState([]);
+  const [returnsTypeView, setReturnsTypeView] = useState("");
   const [barcode, setBarcode] = useState("");
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
@@ -62,9 +66,13 @@ export default function ProductsScreen() {
     setMessage("");
     setLoading(true);
     try {
-      const data = await apiFetch("/products");
-      const list = Array.isArray(data) ? data : data?.items || [];
+      const [productsData, returnsData] = await Promise.all([
+        apiFetch("/products"),
+        apiFetch("/returns"),
+      ]);
+      const list = Array.isArray(productsData) ? productsData : productsData?.items || [];
       setProducts(list);
+      setReturnsList(Array.isArray(returnsData) ? returnsData : []);
     } catch (e) {
       setError(e.message || "Failed to load products");
     } finally {
@@ -87,6 +95,43 @@ export default function ProductsScreen() {
       return name.includes(q) || barcode.includes(q);
     });
   }, [products, query]);
+
+  const classifyReturnType = useCallback((r) => {
+    const t = String(r?.returnType || "").toUpperCase();
+    if (t === "GOOD" || t === "DAMAGED_EXPIRED" || t === "OTHER") return t;
+    const reason = String(r?.reason || "").toUpperCase();
+    if (reason.includes("DAMAGED") || reason.includes("DAMAGE") || reason.includes("EXPIRE")) return "DAMAGED_EXPIRED";
+    if (reason.includes("GOOD")) return "GOOD";
+    return "OTHER";
+  }, []);
+
+  const returnRowsByType = useMemo(() => {
+    if (!returnsTypeView) return [];
+    const map = new Map();
+    for (const ret of returnsList) {
+      if (classifyReturnType(ret) !== returnsTypeView) continue;
+      for (const item of ret.items || []) {
+        const key = String(item.productId || item.product?.id || item.product?.barcode || item.saleItemId);
+        const prev = map.get(key) || {
+          name: item.product?.name || "Item",
+          barcode: item.product?.barcode || "-",
+          qty: 0,
+        };
+        prev.qty += Number(item.qty || 0);
+        map.set(key, prev);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.qty - a.qty);
+  }, [returnsList, returnsTypeView, classifyReturnType]);
+
+  const returnCounts = useMemo(() => {
+    const counts = { GOOD: 0, DAMAGED_EXPIRED: 0, OTHER: 0 };
+    for (const r of returnsList) {
+      const type = classifyReturnType(r);
+      counts[type] = (counts[type] || 0) + 1;
+    }
+    return counts;
+  }, [returnsList, classifyReturnType]);
 
   const keyExtractor = useCallback((item) => String(item.id || item.barcode), []);
   const renderProductItem = useCallback(({ item }) => <ProductCard item={item} />, []);
@@ -179,16 +224,31 @@ export default function ProductsScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.heading}>Products</Text>
-      {role === "admin" ? (
-        <Pressable style={styles.addButton} onPress={() => setShowAddModal(true)}>
-          <Text style={styles.addButtonText}>Add Product</Text>
+      <View style={styles.topActions}>
+        {role === "admin" ? (
+          <Pressable style={[styles.addButton, styles.topButton]} onPress={() => setShowAddModal(true)}>
+            <Text style={styles.addButtonText}>Add Product</Text>
+          </Pressable>
+        ) : null}
+        <Pressable style={styles.refreshButton} onPress={loadProducts} disabled={loading}>
+          <Text style={styles.refreshButtonText}>Refresh</Text>
         </Pressable>
-      ) : null}
+        <Pressable style={styles.returnBtn} onPress={() => setReturnsTypeView("GOOD")}>
+          <Text style={styles.returnBtnText}>Good Returns ({returnCounts.GOOD || 0})</Text>
+        </Pressable>
+        <Pressable style={styles.returnBtn} onPress={() => setReturnsTypeView("DAMAGED_EXPIRED")}>
+          <Text style={styles.returnBtnText}>Damaged/Expired ({returnCounts.DAMAGED_EXPIRED || 0})</Text>
+        </Pressable>
+        <Pressable style={styles.returnBtn} onPress={() => setReturnsTypeView("OTHER")}>
+          <Text style={styles.returnBtnText}>Others ({returnCounts.OTHER || 0})</Text>
+        </Pressable>
+      </View>
       <TextInput
         style={styles.input}
         value={query}
         onChangeText={setQuery}
         placeholder="Search by name or barcode"
+        placeholderTextColor={placeholderColor}
       />
 
       {loading ? <ActivityIndicator style={{ marginTop: 16 }} /> : null}
@@ -208,28 +268,32 @@ export default function ProductsScreen() {
         ListEmptyComponent={!loading ? <Text style={styles.empty}>No products found</Text> : null}
       />
 
-      <Pressable style={styles.reloadButton} onPress={loadProducts}>
-        <Text style={styles.reloadText}>Reload</Text>
-      </Pressable>
-
       <Modal visible={showAddModal} transparent animationType="fade" onRequestClose={() => setShowAddModal(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Add Product</Text>
             <ScrollView style={{ maxHeight: 420 }}>
-              <TextInput style={styles.input} value={barcode} onChangeText={setBarcode} placeholder="Barcode *" />
-              <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Name *" />
-              <TextInput style={styles.input} value={price} onChangeText={setPrice} placeholder="Price" keyboardType="numeric" />
+              <Text style={styles.fieldLabel}>Barcode</Text>
+              <TextInput style={styles.input} value={barcode} onChangeText={setBarcode} placeholder="Barcode *" placeholderTextColor={placeholderColor} />
+              <Text style={styles.fieldLabel}>Name</Text>
+              <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Name *" placeholderTextColor={placeholderColor} />
+              <Text style={styles.fieldLabel}>Price</Text>
+              <TextInput style={styles.input} value={price} onChangeText={setPrice} placeholder="Price" keyboardType="numeric" placeholderTextColor={placeholderColor} />
+              <Text style={styles.fieldLabel}>Invoice Price</Text>
               <TextInput
                 style={styles.input}
                 value={invoicePrice}
                 onChangeText={setInvoicePrice}
                 placeholder="Invoice Price"
                 keyboardType="numeric"
+                placeholderTextColor={placeholderColor}
               />
-              <TextInput style={styles.input} value={stock} onChangeText={setStock} placeholder="Stock" keyboardType="numeric" />
-              <TextInput style={styles.input} value={supplierName} onChangeText={setSupplierName} placeholder="Supplier Name" />
-              <TextInput style={styles.input} value={supplierInvoiceNo} onChangeText={setSupplierInvoiceNo} placeholder="Supplier Invoice No" />
+              <Text style={styles.fieldLabel}>Stock</Text>
+              <TextInput style={styles.input} value={stock} onChangeText={setStock} placeholder="Stock" keyboardType="numeric" placeholderTextColor={placeholderColor} />
+              <Text style={styles.fieldLabel}>Supplier Name</Text>
+              <TextInput style={styles.input} value={supplierName} onChangeText={setSupplierName} placeholder="Supplier Name" placeholderTextColor={placeholderColor} />
+              <Text style={styles.fieldLabel}>Supplier Invoice No</Text>
+              <TextInput style={styles.input} value={supplierInvoiceNo} onChangeText={setSupplierInvoiceNo} placeholder="Supplier Invoice No" placeholderTextColor={placeholderColor} />
               <Text style={styles.filterLabel}>Supplier Payment Method</Text>
               <View style={styles.methodRow}>
                 {["cash", "credit", "cheque"].map((method) => (
@@ -273,11 +337,11 @@ export default function ProductsScreen() {
               {invoicePhoto ? <Text style={styles.photoText}>Photo: Captured</Text> : null}
             </ScrollView>
             <View style={styles.modalActions}>
-              <Pressable style={styles.addButton} onPress={onAddProduct}>
+              <Pressable style={[styles.addButton, styles.modalActionButton]} onPress={onAddProduct}>
                 <Text style={styles.addButtonText}>Save</Text>
               </Pressable>
               <Pressable
-                style={[styles.addButton, styles.cancelButton]}
+                style={[styles.addButton, styles.modalActionButton, styles.cancelButton]}
                 onPress={() => {
                   setShowAddModal(false);
                   resetProductForm();
@@ -286,6 +350,29 @@ export default function ProductsScreen() {
                 <Text style={styles.addButtonText}>Cancel</Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={Boolean(returnsTypeView)} transparent animationType="fade" onRequestClose={() => setReturnsTypeView("")}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              {returnsTypeView === "GOOD" ? "Good Returns" : returnsTypeView === "DAMAGED_EXPIRED" ? "Damaged/Expired Returns" : "Other Returns"}
+            </Text>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {returnRowsByType.map((row) => (
+                <View key={`${row.barcode}-${row.name}`} style={styles.card}>
+                  <Text style={styles.name}>{row.name}</Text>
+                  <Text style={styles.meta}>Barcode: {row.barcode}</Text>
+                  <Text style={styles.meta}>Returned Qty: {formatNumber(row.qty || 0)}</Text>
+                </View>
+              ))}
+              {returnRowsByType.length === 0 ? <Text style={styles.empty}>No returns for this type</Text> : null}
+            </ScrollView>
+            <Pressable style={[styles.addButton, { marginTop: 8 }]} onPress={() => setReturnsTypeView("")}>
+              <Text style={styles.addButtonText}>Close</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -313,6 +400,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 10,
+    color: "#111827",
+  },
+  fieldLabel: {
+    color: "#111827",
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 4,
   },
   filterLabel: {
     color: "#4b5563",
@@ -383,6 +477,28 @@ const styles = StyleSheet.create({
     color: "#166534",
     marginBottom: 8,
   },
+  topActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  returnBtn: {
+    backgroundColor: "#0f172a",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  returnBtnText: {
+    color: "#ffffff",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  topButton: {
+    marginBottom: 0,
+    flex: 1,
+  },
   addButton: {
     backgroundColor: "#0f766e",
     borderRadius: 10,
@@ -391,6 +507,18 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   addButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  refreshButton: {
+    backgroundColor: "#1d4ed8",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  refreshButtonText: {
     color: "#fff",
     fontWeight: "700",
   },
@@ -419,17 +547,6 @@ const styles = StyleSheet.create({
     color: "#b91c1c",
     marginBottom: 8,
   },
-  reloadButton: {
-    backgroundColor: "#1d4ed8",
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  reloadText: {
-    color: "#fff",
-    fontWeight: "700",
-  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
@@ -451,6 +568,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     marginTop: 8,
+  },
+  modalActionButton: {
+    flex: 1,
   },
   cancelButton: {
     backgroundColor: "#6b7280",

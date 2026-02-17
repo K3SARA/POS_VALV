@@ -11,6 +11,14 @@ export default function EndDay() {
   const [closedList, setClosedList] = useState([]);
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showStockMenu, setShowStockMenu] = useState(false);
+  const stockMenuRef = React.useRef(null);
+
+  const doLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    navigate("/login");
+  };
 
   const load = async () => {
     setMsg("");
@@ -21,7 +29,7 @@ export default function EndDay() {
       const list = await apiFetch("/reports/end-day/list");
       setClosedList(list);
     } catch (e) {
-      setMsg("❌ " + e.message);
+      setMsg("Error: " + e.message);
     } finally {
       setLoading(false);
     }
@@ -29,8 +37,17 @@ export default function EndDay() {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line
   }, [date]);
+
+  useEffect(() => {
+    const onDocClick = (event) => {
+      if (stockMenuRef.current && !stockMenuRef.current.contains(event.target)) {
+        setShowStockMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
   const closeDay = async () => {
     try {
@@ -40,10 +57,10 @@ export default function EndDay() {
         method: "POST",
         body: JSON.stringify({ date }),
       });
-      setMsg("✅ Day closed successfully!");
+      setMsg("Day closed successfully");
       await load();
     } catch (e) {
-      setMsg("❌ " + e.message);
+      setMsg("Error: " + e.message);
     } finally {
       setLoading(false);
     }
@@ -52,9 +69,24 @@ export default function EndDay() {
   return (
     <div className="page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <h2 style={{ margin: 0 }}>🧾 End Day (Daily Close)</h2>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => navigate(-1)} style={{ padding: 10 }}>Back</button>
+        <h2 style={{ margin: 0 }}>End Day (Daily Close)</h2>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button onClick={() => navigate("/admin")} style={{ padding: 10 }}>🏠 Home</button>
+          <button onClick={() => navigate("/reports")} style={{ padding: 10 }}>Reports</button>
+          <button onClick={() => navigate("/returns")} style={{ padding: 10 }}>Returns</button>
+          <div ref={stockMenuRef} style={{ position: "relative" }}>
+            <button onClick={() => setShowStockMenu((v) => !v)} style={{ padding: 10 }}>Stock</button>
+            {showStockMenu && (
+              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
+                <button onClick={() => { setShowStockMenu(false); navigate("/stock"); }} style={{ padding: 8 }}>Current Stock</button>
+                <button onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }} style={{ padding: 8 }}>Returned Stock</button>
+              </div>
+            )}
+          </div>
+          <button onClick={() => navigate("/customers")} style={{ padding: 10 }}>Customers</button>
+          <button onClick={() => navigate("/end-day")} style={{ padding: 10 }}>End Day</button>
+          <button onClick={() => navigate("/billing")} style={{ padding: 10 }}>Billing</button>
+          <button onClick={doLogout} style={{ padding: 10, background: "#dc2626", color: "#fff", border: "1px solid #b91c1c", borderRadius: 6 }}>Logout</button>
           <button onClick={load} disabled={loading} style={{ padding: 10 }}>Refresh</button>
         </div>
       </div>
@@ -77,12 +109,7 @@ export default function EndDay() {
             <div>Total items sold: <b>{summary.totalItems}</b></div>
             <div>Total sales: <b>{summary.totalSales}</b></div>
             <div>Status: <b>{summary.alreadyClosed ? "Closed" : "Open"}</b></div>
-
-            <button
-              onClick={closeDay}
-              disabled={loading || summary.alreadyClosed}
-              style={{ marginTop: 10, padding: 12, fontSize: 16 }}
-            >
+            <button onClick={closeDay} disabled={loading || summary.alreadyClosed} style={{ marginTop: 10, padding: 12, fontSize: 16 }}>
               Close Day
             </button>
           </div>
