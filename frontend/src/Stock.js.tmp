@@ -115,18 +115,20 @@ export default function Stock() {
     navigate("/login");
   };
 
-  const loadProducts = useCallback(async () => {
+  const loadProducts = useCallback(async (nextPage = 0) => {
     setMsg("");
     setLoading(true);
     try {
-      const data = await apiFetch("/products");
-      setProducts(Array.isArray(data) ? data : []);
+      const data = await apiFetch(`/products?limit=${pageSize}&offset=${nextPage * pageSize}`);
+      setProducts(data.items || []);
+      setProductsTotal(data.total || 0);
+      setPage(nextPage);
     } catch (e) {
       setMsg(e.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageSize]);
 
   useEffect(() => {
     loadProducts();
@@ -356,10 +358,6 @@ export default function Stock() {
         tbody td { padding: 10px; border-bottom: 1px solid var(--border); }
         tbody tr:hover { background: #ffffff; color: #000000; }
         tbody tr:hover td { color: #000000; }
-        .stock-table-wrap { max-height: 440px; overflow-y: auto; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
-        .stock-table-wrap table { width: 100%; border-collapse: collapse; }
-        .stock-table-wrap thead th { position: sticky; top: 0; z-index: 2; }
-        .stock-table-wrap tbody td { height: 44px; box-sizing: border-box; }
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 9999; }
         .modal { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 16px; width: min(640px, 100%); max-height: 88vh; overflow: auto; }
         @media (max-width: 720px) {
@@ -459,7 +457,6 @@ export default function Stock() {
             </div>
           </div>
 
-          <div className="stock-table-wrap">
           <table>
             <thead>
               <tr>
@@ -528,8 +525,12 @@ export default function Stock() {
               )}
             </tbody>
           </table>
-          </div>
 
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, fontSize: 12 }}>
+            <button className="btn secondary" type="button" disabled={loading || page === 0} onClick={() => loadProducts(page - 1)}>Prev</button>
+            <span>Page {page + 1} of {Math.max(1, Math.ceil(productsTotal / pageSize))}</span>
+            <button className="btn secondary" type="button" disabled={loading || (page + 1) * pageSize >= productsTotal} onClick={() => loadProducts(page + 1)}>Next</button>
+          </div>
         </div>
       </div>
 

@@ -2,25 +2,26 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "./api";
 import { formatNumber } from "./utils/format";
-import Papa from "papaparse";
-
 
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 export default function Stock() {
-  
   const navigate = useNavigate();
   const role = localStorage.getItem("role");
   const isAdmin = role === "admin";
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
-  const [products, setProducts] = useState([]);  const [searchProducts, setSearchProducts] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [productsTotal, setProductsTotal] = useState(0);
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
   const [editingBarcode, setEditingBarcode] = useState(null);
   const [editValues, setEditValues] = useState({ name: "", invoicePrice: "", billingPrice: "", stock: "" });
+  const [page, setPage] = useState(0);
+  const pageSize = 25;
+
   const [showAddStock, setShowAddStock] = useState(false);
   const [showReportsMenu, setShowReportsMenu] = useState(false);
   const [showStockMenu, setShowStockMenu] = useState(false);
@@ -36,125 +37,30 @@ export default function Stock() {
   const [supplierPaymentMethod, setSupplierPaymentMethod] = useState("cash");
   const [receivedDate, setReceivedDate] = useState(todayStr());
   const [invoicePhoto, setInvoicePhoto] = useState("");
-
-
-  const stockImportInputRef = React.useRef(null);
-  const handleImportStock = async (event) => {
-  const file = event.target.files?.[0];
-  event.target.value = "";
-  if (!file) return;
-
-  const toNum = (v, d = 0) => {
-    const n = Number(String(v ?? "").replace(/,/g, "").trim());
-    return Number.isFinite(n) ? n : d;
-  };
-
-  try {
-    setLoading(true);
-    setMsg("");
-
-    const parsed = await new Promise((resolve, reject) => {
-  Papa.parse(file, {
-    header: true,
-    skipEmptyLines: true,
-    transformHeader: (h) => String(h || "").trim().toLowerCase().replace(/\s+/g, ""),
-    complete: (result) => resolve(result.data || []),
-    error: reject,
-  });
-});
-
-
-    let created = 0, updated = 0, skipped = 0, failed = 0;
-
-    for (const row of parsed) {
-      const barcode = String(row.barcode || row.code || "").trim();
-      const name = String(row.name || row.productname || "").trim();
-      if (!barcode) { skipped += 1; continue; }
-
-      try {
-        let existing = null;
-        try { existing = await apiFetch(`/products/${encodeURIComponent(barcode)}`); } catch {}
-
-        const invoicePrice = toNum(row.invoicePrice ?? row.invoiceprice, Number(existing?.invoicePrice || 0));
-        const billingPrice = toNum(row.billingPrice ?? row.billingprice ?? row.price, Number(existing?.price || 0));
-        const stockValue = toNum(row.stock, Number(existing?.stock || 0));
-        const safeName = name || String(existing?.name || "").trim();
-        if (!safeName) { skipped += 1; continue; }
-
-        if (existing) {
-          await apiFetch(`/products/${encodeURIComponent(barcode)}`, {
-            method: "PUT",
-            body: JSON.stringify({ name: safeName, invoicePrice, billingPrice, stock: stockValue }),
-          });
-          updated += 1;
-        } else {
-          await apiFetch("/products", {
-            method: "POST",
-            body: JSON.stringify({ barcode, name: safeName, invoicePrice, billingPrice, stock: stockValue }),
-          });
-          created += 1;
-        }
-      } catch {
-        failed += 1;
-      }
-    }
-
-    await loadProducts();
-    setMsg(`Import complete: ${created} created, ${updated} updated, ${skipped} skipped, ${failed} failed`);
-  } catch (e) {
-    setMsg("Error: " + e.message);
-  } finally {
-    setLoading(false);
-  }
-};
-
-
   const doLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("role");
     navigate("/login");
   };
 
-  const loadProducts = useCallback(async () => {
+  const loadProducts = useCallback(async (nextPage = 0) => {
     setMsg("");
     setLoading(true);
     try {
-      const data = await apiFetch("/products");
-      setProducts(Array.isArray(data) ? data : []);
+      const data = await apiFetch(`/products?limit=${pageSize}&offset=${nextPage * pageSize}`);
+      setProducts(data.items || []);
+      setProductsTotal(data.total || 0);
+      setPage(nextPage);
     } catch (e) {
       setMsg(e.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageSize]);
 
   useEffect(() => {
-    loadProducts();
+    loadProducts(0);
   }, [loadProducts]);
-
-  useEffect(() => {
-    const q = query.trim();
-    if (!q) {
-      setSearchProducts([]);
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await apiFetch("/products");
-        if (!cancelled) {
-          setSearchProducts(Array.isArray(data) ? data : []);
-        }
-      } catch {
-        if (!cancelled) setSearchProducts([]);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [query]);
 
   useEffect(() => {
     const onDocClick = (event) => {
@@ -172,8 +78,7 @@ export default function Stock() {
   const visibleProducts = useMemo(() => {
     const normalize = (v) => String(v ?? "").toLowerCase();
     const q = normalize(query);
-    const source = q ? searchProducts : products;
-    const filtered = source.filter((p) => {
+    const filtered = products.filter((p) => {
       if (!q) return true;
       return normalize(p.name).includes(q) || normalize(p.barcode).includes(q);
     });
@@ -184,7 +89,7 @@ export default function Stock() {
       const bNum = Number(String(b[sortBy] ?? "").replace(/,/g, "")) || 0;
       return (aNum - bNum) * dir;
     });
-  }, [products, searchProducts, query, sortBy, sortDir]);
+  }, [products, query, sortBy, sortDir]);
 
   const startEdit = (product) => {
     setEditingBarcode(product.barcode);
@@ -214,7 +119,7 @@ export default function Stock() {
       });
       setMsg("Product updated");
       cancelEdit();
-      await loadProducts();
+      await loadProducts(page);
     } catch (e) {
       setMsg("Error: " + e.message);
     }
@@ -225,7 +130,7 @@ export default function Stock() {
     try {
       await apiFetch(`/products/${barcodeValue}`, { method: "DELETE" });
       setMsg("Product deleted");
-      await loadProducts();
+      await loadProducts(page);
     } catch (e) {
       setMsg("Error: " + e.message);
     }
@@ -262,7 +167,7 @@ export default function Stock() {
       setReceivedDate(todayStr());
       setInvoicePhoto("");
       setShowAddStock(false);
-      await loadProducts();
+      await loadProducts(0);
     } catch (e) {
       setMsg("Error: " + e.message);
     }
@@ -352,14 +257,10 @@ export default function Stock() {
         .payment-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        thead th { text-align: left; padding: 10px; background: rgba(2, 2, 2, 0.99); border-bottom: 1px solid var(--border); }
+        thead th { text-align: left; padding: 10px; background: rgba(255, 255, 255, 0.04); border-bottom: 1px solid var(--border); }
         tbody td { padding: 10px; border-bottom: 1px solid var(--border); }
         tbody tr:hover { background: #ffffff; color: #000000; }
         tbody tr:hover td { color: #000000; }
-        .stock-table-wrap { max-height: 440px; overflow-y: auto; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
-        .stock-table-wrap table { width: 100%; border-collapse: collapse; }
-        .stock-table-wrap thead th { position: sticky; top: 0; z-index: 2; }
-        .stock-table-wrap tbody td { height: 44px; box-sizing: border-box; }
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 9999; }
         .modal { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 16px; width: min(640px, 100%); max-height: 88vh; overflow: auto; }
         @media (max-width: 720px) {
@@ -373,12 +274,10 @@ export default function Stock() {
         <div className="topbar">
           <div className="title">
             <h2>Stock</h2>
-           
-
             <span>Search, edit, and delete items</span>
           </div>
           <div className="actions">
-            <button className="btn ghost" onClick={() => navigate(isAdmin ? "/admin" : "/cashier")}>Home</button>
+            <button className="btn ghost" onClick={() => navigate(isAdmin ? "/admin" : "/cashier")}>???? Home</button>
             <div className="menu-wrap" ref={reportsMenuRef}>
               <button className="btn ghost" onClick={() => setShowReportsMenu((v) => !v)}>Reports</button>
               {showReportsMenu && (
@@ -411,7 +310,6 @@ export default function Stock() {
             {isAdmin && <button className="btn ghost" onClick={() => navigate("/billing")}>Billing</button>}
             <button className="btn danger" onClick={doLogout}>Logout</button>
             {isAdmin && <button className="btn add-stock" onClick={() => setShowAddStock(true)}>Add Stock</button>}
-            
             <button className="btn secondary" onClick={() => window.print()}>Print</button>
           </div>
         </div>
@@ -435,31 +333,15 @@ export default function Stock() {
                 <option value="asc">Ascending</option>
                 <option value="desc">Descending</option>
               </select>
-              <button className="btn secondary" type="button" onClick={loadProducts} disabled={loading}>
+              <button className="btn secondary" type="button" onClick={() => loadProducts(page)} disabled={loading}>
                 Refresh
               </button>
-               {isAdmin && (
-  <>
-    <button className="btn secondary" type="button" onClick={() => stockImportInputRef.current?.click()} disabled={loading}>
-      Import Stock
-    </button>
-    <input
-      ref={stockImportInputRef}
-      type="file"
-      accept=".csv,text/csv"
-      style={{ display: "none" }}
-      onChange={handleImportStock}
-    />
-  </>
-)}
-
               <button className="btn secondary" type="button" onClick={downloadStockCsv} disabled={loading}>
-                Export Stock
+                Download Excel
               </button>
             </div>
           </div>
 
-          <div className="stock-table-wrap">
           <table>
             <thead>
               <tr>
@@ -528,8 +410,12 @@ export default function Stock() {
               )}
             </tbody>
           </table>
-          </div>
 
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, fontSize: 12 }}>
+            <button className="btn secondary" type="button" disabled={loading || page === 0} onClick={() => loadProducts(page - 1)}>Prev</button>
+            <span>Page {page + 1} of {Math.max(1, Math.ceil(productsTotal / pageSize))}</span>
+            <button className="btn secondary" type="button" disabled={loading || (page + 1) * pageSize >= productsTotal} onClick={() => loadProducts(page + 1)}>Next</button>
+          </div>
         </div>
       </div>
 
@@ -585,10 +471,6 @@ export default function Stock() {
     </div>
   );
 }
-
-
-
-
 
 
 

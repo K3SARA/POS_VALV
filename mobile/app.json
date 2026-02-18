@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Apex Logistics",
-    "slug": "pos-mobile",
+    "slug": "posvalv",
     "version": "1.0.0",
     "icon": "./assets/logo.png",
     "orientation": "portrait",
@@ -13,6 +13,7 @@
       "supportsTablet": true
     },
     "android": {
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#f4f4f5"
@@ -24,8 +25,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "f7d76135-bbaa-41f8-b885-089f4edf0471"
+        "projectId": "98500b33-003c-44fb-a840-b7fcdb5aa287"
       }
-    }
+    },
+    "owner": "beatsbeatss-organization"
   }
 }

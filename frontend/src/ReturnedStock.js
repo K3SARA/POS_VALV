@@ -169,7 +169,7 @@ export default function ReturnedStock() {
             <span>Items returned from sales</span>
           </div>
           <div className="actions">
-            <button className="btn ghost" onClick={() => navigate("/admin")}>ðŸ  Home</button>
+            <button className="btn ghost" onClick={() => navigate("/admin")}>{"\uD83C\uDFE0"} Home</button>
             <button className="btn ghost" onClick={() => navigate("/reports")}>Reports</button>
             <button className="btn ghost" onClick={() => navigate("/returns")}>Returns</button>
             <button className="btn ghost" onClick={() => navigate("/stock")}>Stock</button>
@@ -235,4 +235,5 @@ export default function ReturnedStock() {
     </div>
   );
 }
+
 

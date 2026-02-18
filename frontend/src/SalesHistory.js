@@ -72,7 +72,7 @@ export default function SalesHistory() {
         <h2 style={{ margin: 0 }}>???? Sales History</h2>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={() => navigate("/admin")} style={{ padding: 10 }}>
-            ðŸ  Home
+            ???????? Home
           </button>
           <button onClick={() => navigate(-1)} style={{ padding: 10 }}>
             Back
@@ -170,7 +170,7 @@ export default function SalesHistory() {
             style={{
               background: "#fff",
               color: "#000",
-              width: "min(520px, 100%)",
+              width: printLayoutMode === "a4" ? "min(980px, 96vw)" : "min(520px, 96vw)",
               borderRadius: 10,
               padding: 16,
               border: "1px solid #ddd",
@@ -189,7 +189,7 @@ export default function SalesHistory() {
               </button>
             </div>
 
-            <div id="print-area" style={{ background: "#fff", padding: 10, borderRadius: 8 }}>
+            <div id="print-area" style={{ background: "#fff", padding: 10, borderRadius: 8, overflowX: "hidden", maxHeight: "72vh" }}>
                 <ReceiptPrint
                   layout={(() => {
                     const layout = getBillLayoutFromStorage();
@@ -284,6 +284,8 @@ export default function SalesHistory() {
     </div>
   );
 }
+
+
 
 
 

@@ -44,5 +44,6 @@
   }
   ,
   "include": ["src"],
-  "exclude": ["node_modules", "prisma.config.ts", "prisma"]
+  "exclude": ["node_modules", "prisma.config.ts", "prisma", "src/index.copy.ts", "src/index.new.ts"]
 }
+

@@ -62,6 +62,7 @@ model Sale {
   createdAt DateTime @default(now())
 
   saleItems SaleItem[]
+  customerName String?
 
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id])

@@ -58,6 +58,7 @@ export default function Login({ onLogin }) {
 
       <div className="login-inner">
         <div className="login-title-wrap">
+          <img src="/apex_logo.png" alt="Apex Logistics" className="login-apex-logo" />
           <h1 className="login-brand">Apex Logistics</h1>
           <p className="login-sub">Fast, simple, reliable POS access</p>
         </div>

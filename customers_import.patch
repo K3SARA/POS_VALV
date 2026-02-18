@@ -1,0 +1,110 @@
+diff --git a/frontend/src/Customers.js b/frontend/src/Customers.js
+index 7677b46..1111111 100644
+--- a/frontend/src/Customers.js
++++ b/frontend/src/Customers.js
+@@ -47,6 +47,96 @@ export default function Customers() {
+   const loadCustomers = async () => {
+@@
+   };
++
++  const parseCsvText = (text) => {
++    const lines = String(text || "")
++      .replace(/^\uFEFF/, "")
++      .split(/\r?\n/)
++      .map((line) => line.trim())
++      .filter(Boolean);
++    if (lines.length < 2) return [];
++    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
++    return lines.slice(1).map((line) => {
++      const cols = line.split(",").map((c) => c.trim());
++      const row = {};
++      headers.forEach((h, i) => {
++        row[h] = String(cols[i] || "").trim();
++      });
++      return row;
++    });
++  };
++
++  const handleImportCustomers = async (event) => {
++    const file = event.target.files?.[0];
++    event.target.value = "";
++    if (!file) return;
++
++    try {
++      setLoading(true);
++      setMsg("");
++      const text = await file.text();
++      const items = parseCsvText(text);
++      if (!items.length) {
++        setMsg("Error: CSV is empty or invalid");
++        return;
++      }
++
++      let created = 0;
++      let updated = 0;
++      let skipped = 0;
++      let failed = 0;
++
++      for (const item of items) {
++        const customerId = String(item.customerid || item.id || "").trim();
++        const name = String(item.name || "").trim();
++        const phone = String(item.phone || "").trim();
++        const address = String(item.address || "").trim();
++
++        if (!name) {
++          skipped += 1;
++          continue;
++        }
++
++        try {
++          if (customerId) {
++            let exists = false;
++            try {
++              await apiFetch(`/customers/${encodeURIComponent(customerId)}`);
++              exists = true;
++            } catch {
++              exists = false;
++            }
++
++            if (exists) {
++              await apiFetch(`/customers/${encodeURIComponent(customerId)}`, {
++                method: "PUT",
++                body: JSON.stringify({ name, phone: phone || null, address: address || null }),
++              });
++              updated += 1;
++            } else {
++              await apiFetch("/customers", {
++                method: "POST",
++                body: JSON.stringify({ customerId, name, phone: phone || null, address: address || null }),
++              });
++              created += 1;
++            }
++          } else {
++            await apiFetch("/customers", {
++              method: "POST",
++              body: JSON.stringify({ name, phone: phone || null, address: address || null }),
++            });
++            created += 1;
++          }
++        } catch {
++          failed += 1;
++        }
++      }
++
++      await loadCustomers();
++      setMsg(`Import complete: ${created} created, ${updated} updated, ${skipped} skipped, ${failed} failed`);
++    } catch (e) {
++      setMsg("Error: " + e.message);
++    } finally {
++      setLoading(false);
++    }
++  };
+@@ -201,6 +291,8 @@ export default function Customers() {
+             </div>
+             <div style={{ display: "flex", gap: 8 }}>
+               <button className="btn secondary print-hide" onClick={() => window.print()}>Print</button>
++              <button className="btn secondary print-hide" onClick={() => customerImportInputRef.current?.click()} disabled={loading}>Import Customers</button>
++              <input ref={customerImportInputRef} type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={handleImportCustomers} />
+               <button className="btn secondary print-hide" onClick={loadCustomers} disabled={loading}>Refresh</button>
+             </div>
+           </div>

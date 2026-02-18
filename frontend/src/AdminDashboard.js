@@ -499,9 +499,28 @@ const createCustomer = async (e) => {
           font-size: 26px;
         }
 
-        .title span {
+        .title .subtitle-row {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          margin-top: 0.1px;
+        }
+
+        .title .subtitle-row span {
           font-size: 13px;
           color: var(--muted);
+        }
+
+        .title .partner-inline {
+          line-height: 0;
+        }
+
+        .title .partner-inline img {
+          width: 102px;
+          height: 34px;
+          object-fit: contain;
+          display: block;
+          margin-bottom: 6px;
         }
 
         .actions {
@@ -762,7 +781,12 @@ const createCustomer = async (e) => {
         <div className="topbar">
           <div className="title">
             <h2>Admin Dashboard | Apex Logistics</h2>
-            <span>Minimal control center for your POS</span>
+            <div className="subtitle-row">
+              <span>Minimal control center for your POS</span>
+              <div className="partner-inline">
+                <img src="/valvoline.png" alt="Valvoline" />
+              </div>
+            </div>
           </div>
           <div className="actions">
             <button className="btn ghost" onClick={() => navigate("/admin")}>🏠 Home</button>

@@ -52,8 +52,6 @@ export default function Cashier({ onLogout }) {
   const [draftName, setDraftName] = useState("");
   const [draftLoading, setDraftLoading] = useState(false);
   const [showDraftDropdown, setShowDraftDropdown] = useState(false);
-  const autoDraftSavedRef = useRef(false);
-  const isCompletingSaleRef = useRef(false);
   const [cart, setCart] = useState([]);
   const [dayStarted, setDayStarted] = useState(!requiresStartDay);
   const [dayStatusLoading, setDayStatusLoading] = useState(requiresStartDay);
@@ -141,46 +139,6 @@ export default function Cashier({ onLogout }) {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  const buildDraftPayload = useCallback(() => ({
-    name: draftName.trim() || null,
-    cart,
-    customerEnabled,
-    customerName,
-    customerPhone,
-    customerAddress,
-    discountType,
-    discountValue,
-    paymentMethod,
-    cashReceived,
-  }), [cart, cashReceived, customerAddress, customerEnabled, customerName, customerPhone, discountType, discountValue, draftName, paymentMethod]);
-
-  const shouldAutoSaveDraft = useCallback(() => {
-    return cart.length > 0;
-  }, [cart.length]);
-
-  const autoSaveDraft = useCallback(async () => {
-    if (autoDraftSavedRef.current) return;
-    if (isCompletingSaleRef.current) return;
-    if (!shouldAutoSaveDraft()) return;
-    autoDraftSavedRef.current = true;
-    try {
-      await apiFetch("/drafts", {
-        method: "POST",
-        body: JSON.stringify(buildDraftPayload()),
-      });
-    } catch {
-      // silent on auto-save
-    }
-  }, [buildDraftPayload, shouldAutoSaveDraft]);
-
-  useEffect(() => {
-    return () => {
-      autoSaveDraft();
-    };
-  }, [autoSaveDraft]);
-
-
-
   const [barcode, setBarcode] = useState("");
   const [qty, setQty] = useState(1);
 
@@ -195,8 +153,9 @@ export default function Cashier({ onLogout }) {
       setItemLoading(true);
       const data = await apiFetch("/products");
       const list = Array.isArray(data) ? data : (data?.items || []);
+      const inStockList = list.filter((p) => Number(p?.stock || 0) > 0);
       setAllItems(list);
-      setItemResults(list);
+      setItemResults(inStockList);
       setShowItemDropdown(true);
     } catch (e) {
       setAllItems([]);
@@ -210,14 +169,14 @@ export default function Cashier({ onLogout }) {
   const filterItems = (text) => {
     const q = String(text || "").trim().toLowerCase();
     if (!q) {
-      setItemResults(allItems);
+      setItemResults(allItems.filter((p) => getRemainingStockForDisplay(p.barcode) > 0));
       setShowItemDropdown(true);
       return;
     }
     const filtered = allItems.filter((p) => {
       const name = String(p.name || "").toLowerCase();
       const barcodeText = String(p.barcode || "").toLowerCase();
-      return name.includes(q) || barcodeText.includes(q);
+      return (name.includes(q) || barcodeText.includes(q)) && getRemainingStockForDisplay(p.barcode) > 0;
     });
     setItemResults(filtered);
     setShowItemDropdown(true);
@@ -441,12 +400,14 @@ export default function Cashier({ onLogout }) {
   const confirmPrint = (mode) => {
     setPrintLayoutMode(mode);
     setPrintPaperPrompt(false);
-    applyReceiptPrint();
+    applyReceiptPrint(mode);
     const cleanup = () => {
       cleanupReceiptPrint();
       window.onafterprint = null;
+      window.removeEventListener("focus", cleanup);
     };
     window.onafterprint = cleanup;
+    window.addEventListener("focus", cleanup, { once: true });
     setTimeout(() => {
       window.print();
       setMsg("Bill printed");
@@ -461,6 +422,11 @@ export default function Cashier({ onLogout }) {
     try {
       setLoading(true);
       const product = await apiFetch(`/products/${code}`);
+      const currentStock = Number(product?.stock || 0);
+      if (!Number.isFinite(currentStock) || currentStock <= 0) {
+        setMsg("Item is out of stock");
+        return;
+      }
 
       setCart((prev) => {
         const existing = prev.find((p) => p.barcode === product.barcode);
@@ -634,7 +600,6 @@ export default function Cashier({ onLogout }) {
     }
 
     try {
-      isCompletingSaleRef.current = true;
       setLoading(true);
       setMsg("");
       const data = await apiFetch("/cashier/day/start", {
@@ -761,15 +726,9 @@ export default function Cashier({ onLogout }) {
         customerPhone,
         customerAddress,
       });
-      autoDraftSavedRef.current = true;
       clearCart();
-      setTimeout(() => {
-        autoDraftSavedRef.current = false;
-        isCompletingSaleRef.current = false;
-      }, 800);
     } catch (e) {
       setMsg("Error: " + e.message);
-      isCompletingSaleRef.current = false;
     } finally {
       setLoading(false);
     }
@@ -793,7 +752,7 @@ export default function Cashier({ onLogout }) {
       </div>
 
       <button onClick={() => navigate("/admin")} style={{ padding: 10, fontSize: 16 }}>
-        🏠 Home
+        {"\uD83C\uDFE0"} Home
       </button>
       <button onClick={() => navigate("/reports")} style={{ padding: 10, fontSize: 16 }}>
         Sales History
@@ -1468,13 +1427,22 @@ export default function Cashier({ onLogout }) {
             zIndex: 99999,
           }}
         >
-          <div style={{ background: "#fff", padding: 15, borderRadius: 10, maxWidth: 420, width: "100%" }}>
+          <div
+            style={{
+              background: "#fff",
+              padding: 15,
+              borderRadius: 10,
+              width: printLayoutMode === "a4" ? "min(980px, 96vw)" : "min(520px, 96vw)",
+              maxHeight: "92vh",
+              overflowY: "auto",
+            }}
+          >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0 }}>Print Preview</h3>
               <button onClick={() => setShowPrint(false)}>X</button>
             </div>
 
-            <div id="print-area" style={{ marginTop: 10 }}>
+            <div id="print-area" style={{ marginTop: 10, overflowX: "hidden" }}>
                 <ReceiptPrint
                   layout={layoutForPrint}
                   layoutMode={printLayoutMode}
@@ -1618,5 +1586,8 @@ export default function Cashier({ onLogout }) {
     </div>
   );
 }
+
+
+
 
 

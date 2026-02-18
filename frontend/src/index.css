@@ -106,12 +106,12 @@ tbody tr:hover { background: #fbfaf7; color: #000; }
 }
 
 .table-sortable-th[data-sort-dir="asc"]::after {
-  content: " ▲";
+  content: " \25B2";
   font-size: 11px;
 }
 
 .table-sortable-th[data-sort-dir="desc"]::after {
-  content: " ▼";
+  content: " \25BC";
   font-size: 11px;
 }
 
@@ -241,6 +241,14 @@ h1, h2, h3, h4 {
 .login-title-wrap {
   text-align: center;
   margin-bottom: 16px;
+}
+
+.login-apex-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 8px;
 }
 
 .login-brand {
@@ -384,29 +392,70 @@ h1, h2, h3, h4 {
 }
 /* Receipt print styles */
 @media print {
-  body * {
+  body.receipt-print * {
     visibility: hidden;
   }
-  #print-area, #print-area * {
+    
+  body.receipt-print #print-area { display: none !important; }
+  body.receipt-print #print-area.print-active,
+  body.receipt-print #print-area.print-active * {
     visibility: visible;
   }
-  #print-area {
+  body.receipt-print #print-area.print-active {
+    display: block !important;
+  }
+  body.receipt-print.receipt-print-3inch #print-area.print-active {
     position: absolute;
     left: 0;
     top: 0;
-    padding: 6mm;
-  }
-  body.receipt-print #print-area {
+    padding: 4mm;
     width: 104mm;
-    min-height: 300mm;
+    min-height: auto;
   }
+  body.receipt-print.receipt-print-a4 #print-area.print-active {
+    position: absolute;
+    width: 100%;
+    min-height: auto;
+    
+    margin: 0;
+    left: 0;
+    top: 0;
+    padding: 0;
+    overflow: visible;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  
+  .inv-signatures {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-top: 32px; 
+  }
+
+  .inv-table th,
+  .inv-table td,
+  .inv-bank-box,
+  .inv-total-box,
+  .inv-divider {
+    border-color: #000;
+  }
+
+  .receipt-template-a4,
+  .receipt-template-a4 * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
 }
 
 /* Screen preview styling */
 .receipt {
   width: 104mm;
   font-family: Arial, sans-serif;
-  font-size: 12px;
+  font-size: 13px;
   color: #000;
 }
 
@@ -426,3 +475,316 @@ h1, h2, h3, h4 {
 
 .item { margin: 6px 0; }
 .itemName { font-weight: 600; }
+
+.receipt-template-a4 {
+  width: 100%;
+  /* Keep A4 content safely inside printable area (A4 width 210mm - margins) */
+  max-width: 189.68mm;
+  max-height: none;
+  margin: 0 auto;
+  background: #fff;
+  color: #111;
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+  padding: 12px;
+  transform: none;
+}
+
+.inv-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 8px;
+}
+
+.inv-brand-left {
+  display: grid;
+  grid-template-columns:  68px minmax(200px, 1fr) 90px;
+  gap: 10px;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.inv-brand-right {
+  display: grid;
+  gap: 7px;
+  margin-top: 20px;
+  margin-left: -30px;
+  
+}
+
+.inv-brand-right-row {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-right: -80px;
+  margin-left: -35px;
+}
+
+.inv-logo-left { width: 80px; height: 62px; object-fit: contain; }
+.inv-logo-valvoline { 
+  width: 90px; 
+  height: 50px; 
+  object-fit: contain; 
+  align-self: center; 
+  margin-left: -65px;
+  margin-right: -20px; 
+  margin-top: -23px;
+  margin-bottom: -59px;
+}
+.inv-logo-apex { 
+  width: 55px; 
+  height: 50px; 
+  object-fit: contain;
+  margin-top: 15px;
+  margin-left: -10px;
+  margin-right: -10px;
+ }
+.apex-address {
+
+margin-top: 12px; 
+}
+
+.inv-title-main { font-size: 14px; font-weight: 700; letter-spacing: 0.1px; }
+.inv-title-sub { font-size: 20px; font-weight: 700;line-height: 1.05;white-space: normal; }
+.inv-sub { font-size: 13px; }
+.inv-sub-small { font-size: 11px; }
+.inv-title-main-role { font-size: 13px;margin-top: -1px;margin-bottom:-8px; font-weight: 700; margin-left: 23px; grid-template-columns:minmax(900px, 1fr); }
+
+.inv-divider {
+  border-top: 1px solid #8ca1bb;
+  margin: 12px 0 14px;
+}
+
+.inv-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.inv-panel {
+  background: #00000000;
+  border: 1px solid #bfd2e7;
+  padding: 11px;
+  min-height: 138px;
+  display: grid;
+  gap: 5px;
+}
+
+.inv-panel-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.inv-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin-bottom: 12px;
+}
+
+.inv-table th,
+.inv-table td {
+  border: 1px solid #4b5563;
+  padding: 6px 5px;
+  font-size: 11px;
+}
+
+.inv-table th {
+  text-align: center;
+  font-weight: 700;
+  background: #f6f7fa;
+}
+
+.inv-table td:nth-child(1),
+.inv-table td:nth-child(2) { text-align: left; }
+.inv-table td:nth-child(n + 3) { text-align: right; }
+
+.inv-table th:nth-child(2),
+.inv-table td:nth-child(2) { width: 24%; }
+.inv-table th:nth-child(3),
+.inv-table td:nth-child(3),
+.inv-table th:nth-child(4),
+.inv-table td:nth-child(4) { width: 7%; }
+.inv-bottom-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 18px;
+  margin-bottom: 12px;
+}
+
+.inv-bank-box,
+.inv-total-box {
+  border: 1px solid #90b5e2;
+  padding: 10px;
+  min-height: 120px;
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 10px;
+  font-weight: 500;
+  white-space: normal;
+  
+}
+
+.inv-bank-box { display: grid; gap: 2px; line-height: 20px; }
+.inv-bank-box_sub { display: grid; gap: -2px; line-height: 20px; }
+.inv-bank-headline{
+  font-size: 13px;
+ font-weight: 100px;
+  text-align: center;
+  line-height: 18px;
+  margin-top: -2px;
+  margin-bottom: 1px;
+
+}
+.inv-bank-subline {
+  font-size: 20px;
+  text-align: center;
+  line-height: 18px;
+  margin-top: 1px;
+  margin-bottom: 50px;
+  
+}
+.inv-bank-headline { margin-bottom: -3px; }
+.inv-bank-subline {
+  margin-bottom: 2px;
+}
+.inv-bank-title {
+  display: inline-block;
+  background: #184d9b;
+  color: #fff;
+  padding: 3px 12px 0.01px ;
+  margin-top: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 50px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15) inset;
+}
+.inv-bank-line::before {
+  content: "\25B8 ";
+  color: #184d9b;
+  font-weight: 700;
+}
+
+.inv-total-box { display: grid; gap: 6px; align-content: start; }
+.inv-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.inv-total-row-main {
+  font-size: 13px;
+}
+.inv-free-items-row {
+  align-items: flex-start;
+  gap: 8px;
+}
+.inv-free-items-row span:last-child {
+  text-align: right;
+  max-width: 62%;
+  word-break: break-word;
+}
+
+.inv-grand-row {
+  display: flex;
+  justify-content: space-between;
+  background: #052a5e;
+  color: #fff;
+  padding: 6px 8px;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 50px;
+  
+}
+
+.inv-grand-value {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  margin-top: -1px;
+  margin-bottom: -9px;
+}
+
+.inv-credit-note {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 8px 0 14px;
+}
+
+.inv-thanks {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+  margin: 600px 0 50px;
+  padding-bottom: 35px;
+}
+
+.inv-signatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  margin-top: -20px;
+  font-size: 13px;
+  margin-bottom: -50px;
+}
+
+.inv-sign-line {
+  border-top: 1px dotted #111;
+  margin-bottom: 6px;
+}
+
+.inv-powered {
+  text-align: center;
+  font-size: 8px;
+  color: #374151;
+  margin-top: 80px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* A4 one-page print tightening */
+@media print {
+  @page { size: A4; margin: 6mm; }
+
+  body.receipt-print.receipt-print-a4 .receipt-template-a4 {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 6mm 7mm 4mm;
+    box-sizing: border-box;
+  }
+
+  body.receipt-print.receipt-print-a4 .inv-signatures {
+    margin-top: 20px !important;
+    margin-bottom: 12px !important;
+  }
+
+  body.receipt-print.receipt-print-a4 .inv-powered {
+    margin-top: 8px !important;
+  }
+
+  body.receipt-print.receipt-print-a4 .inv-thanks {
+    margin: 6px 0 12px !important;
+  }
+}

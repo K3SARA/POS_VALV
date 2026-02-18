@@ -2,6 +2,20 @@ import React from "react";
 import { formatMoney, formatNumber } from "./utils/format";
 
 export default function ReceiptPrint(props) {
+  const publicBase = process.env.PUBLIC_URL || "";
+  const asset = (file) => {
+    const cleanFile = String(file || "").replace(/^\//, "");
+    const cleanBase = String(publicBase || "").replace(/\/$/, "");
+    if (cleanBase) return `${cleanBase}/${cleanFile}`;
+    try {
+      if (typeof document !== "undefined" && document.baseURI) {
+        return new URL(cleanFile, document.baseURI).toString();
+      }
+    } catch {
+      // fallback below
+    }
+    return `/${cleanFile}`;
+  };
   const {
     layout = {},
     companyName = layout.companyName || "Apex Logistics",
@@ -32,125 +46,198 @@ export default function ReceiptPrint(props) {
       qty: Number(i.freeIssue ? i.qty : i.freeQty || 0) || 0,
     }))
     .filter((i) => i.qty > 0);
-  const freeItemsText = freeItems.map((i) => `${i.name} x${i.qty}`).join(", ");
+  const freeItemsText = freeItems.map((i) => `${i.name} x ${Number(i.qty || 0).toLocaleString()}`).join(", ");
   const money = (v) => formatMoney(v);
   const count = (v) => formatNumber(v);
+  const invoiceDate = dateText || new Date().toLocaleString();
+  const safeRoute = props.route || props.dayRoute || "-";
+  const safeUser = props.staffName || props.username || "-";
+  const rows = items.map((i, idx) => {
+    const price = Number(i.price) || 0;
+    const qty = Number(i.qty) || 0;
+    const freeQty = Number(i.freeIssue ? i.qty : i.freeQty || 0) || 0;
+    const base = price * qty;
+    const t = i.itemDiscountType || "none";
+    const v = Number(i.itemDiscountValue || 0);
+    let itemDiscount = 0;
+    if (t === "amount") {
+      itemDiscount = Math.max(0, Math.min(v, base));
+    } else if (t === "percent") {
+      const pct = Math.max(0, Math.min(v, 100));
+      itemDiscount = Math.round((base * pct) / 100);
+    }
+    return {
+      key: `${i.barcode}-${i.name}-${idx}`,
+      code: i.barcode || "-",
+      name: i.name || "-",
+      qty,
+      freeQty,
+      unitPrice: price,
+      total: base,
+      discount: itemDiscount,
+      lineTotal: Math.max(0, base - itemDiscount),
+    };
+  });
+  const totalItemDiscount = rows.reduce((sum, row) => sum + Number(row.discount || 0), 0);
 
   if (layoutMode === "a4") {
     return (
-      <div className="receipt a4" style={{ color: "#000", fontSize: 12 }}>
-        <div style={{ textAlign: "center", fontWeight: 700, fontSize: 18 }}>{companyName}</div>
-        {headerLines.map((line, idx) => (
-          <div key={`hdr-${idx}`} style={{ textAlign: "center", fontSize: 12 }}>
-            {line}
+      <div className="receipt receipt-template-a4">
+        <div className="inv-header">
+          <div className="inv-brand-left">
+            <img
+              src={asset("bill-unitedmotors.png")}
+              alt="United Motors"
+              className="inv-logo-left"
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = asset("logo.png");
+              }}
+            />
+            <div>
+              <div className="inv-title-sub">UNITED MOTORS<br />LANKA PLC</div>
+              <div className="inv-sub">VALVOLINE DEPARTMENT</div>
+              <div className="inv-sub-small">Company Reg No : P.Q 74</div>
+              <div className="inv-sub-small">Vat Reg No : 294 000038 7000</div>
+            </div>
+            
           </div>
-        ))}
-
-        <div style={{ borderTop: "1px solid #000", margin: "10px 0" }} />
-
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-          <div>Sale: #{saleId || "-"}</div>
-          <div>Date: {dateText || new Date().toLocaleString()}</div>
+          <div className="inv-brand-right">
+            <img
+              src={asset("bill-valvoline.png")}
+              alt="Valvoline"
+              className="inv-logo-valvoline"
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = asset("valvoline.png");
+              }}
+            />
+            <div className="inv-title-main-role">AUTHORIZED VALVOLINE DISTRIBUTOR</div>
+            <div className="inv-brand-right-row">
+              <img
+                src={asset("apex_logo.png")}
+                alt="Apex Logistics"
+                className="inv-logo-apex"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = asset("logo512.png");
+                }}
+              />
+              <div className="apex-address">
+                <div className="inv-title-sub">APEX LOGISTICS (PVT) LTD</div>
+                <div className="inv-sub">NO.854,ALUVIHARAYA, MATALE</div>
+                <div className="inv-sub">066 2222371 / 0774320769</div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {showCustomer && (customerName || customerPhone || customerAddress) && (
-          <div style={{ marginTop: 6, fontSize: 12 }}>
-            <div>Customer: {customerName || "-"}</div>
-            <div>Phone: {customerPhone || "-"}</div>
-            <div>Address: {customerAddress || "-"}</div>
+        <div className="inv-divider" />
+
+        <div className="inv-panels">
+          <div className="inv-panel">
+            <div className="inv-panel-title">Customer Details</div>
+            
+            <div>ID : {props.customerId || "-"}</div>
+            <div>Name : {customerName || "-"}</div>
+            <div>Address : {customerAddress || "-"}</div>
+            <div>Contact No : {customerPhone || "-"}</div>
+            <div>Root : {safeRoute}</div>
+            <div>Vat Reg : -</div>
           </div>
-        )}
+          <div className="inv-panel">
+            <div className="inv-panel-title">Invoice</div>
+            <div>Invoice Date : {invoiceDate}</div>
+            <div>System Invoice Number : {saleId || "-"}</div>
+            <div>Sales Invoice Staff : {safeUser}</div>
+            <div>SalePoint : KANDY</div>
+          </div>
+        </div>
 
-        <div style={{ borderTop: "1px solid #000", margin: "10px 0" }} />
-
-        {showItemsHeading && <div style={{ fontWeight: 700, marginBottom: 6 }}>Items</div>}
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <table className="inv-table">
           <thead>
             <tr>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #000", paddingBottom: 4 }}>Item</th>
-              <th style={{ textAlign: "right", borderBottom: "1px solid #000", paddingBottom: 4 }}>Qty</th>
-              <th style={{ textAlign: "right", borderBottom: "1px solid #000", paddingBottom: 4 }}>Price</th>
-              <th style={{ textAlign: "right", borderBottom: "1px solid #000", paddingBottom: 4 }}>Disc</th>
-              <th style={{ textAlign: "right", borderBottom: "1px solid #000", paddingBottom: 4 }}>Line Total</th>
+              <th>ITEM CODE</th>
+              <th>DESCRIPTION</th>
+              <th>QTY</th>
+              <th>FREE QTY</th>
+              <th>UNIT PRICE</th>
+              <th>TOTAL</th>
+              <th>DISCOUNT</th>
+              <th>TOTAL VALUE</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((i) => {
-              const price = Number(i.price) || 0;
-              const qty = Number(i.qty) || 0;
-              const base = price * qty;
-              const t = i.itemDiscountType || "none";
-              const v = Number(i.itemDiscountValue || 0);
-              let itemDiscount = 0;
-              if (t === "amount") {
-                itemDiscount = Math.max(0, Math.min(v, base));
-              } else if (t === "percent") {
-                const pct = Math.max(0, Math.min(v, 100));
-                itemDiscount = Math.round((base * pct) / 100);
-              }
-              const lineTotal = Math.max(0, base - itemDiscount);
-              return (
-                <tr key={`${i.barcode}-${i.name}`}>
-                  <td style={{ padding: "6px 0" }}>{i.name}</td>
-                  <td style={{ textAlign: "right" }}>{count(qty)}</td>
-                  <td style={{ textAlign: "right" }}>{money(price)}</td>
-                  <td style={{ textAlign: "right" }}>{itemDiscount ? money(itemDiscount) : "-"}</td>
-                  <td style={{ textAlign: "right" }}>{money(lineTotal)}</td>
-                </tr>
-              );
-            })}
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td>{r.code}</td>
+                <td>{r.name}</td>
+                <td>{count(r.qty)}</td>
+                <td>{r.freeQty ? count(r.freeQty) : "-"}</td>
+                <td>{money(r.unitPrice)}</td>
+                <td>{money(r.total)}</td>
+                <td>{money(r.discount)}</td>
+                <td>{money(r.lineTotal)}</td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan="8" style={{ textAlign: "center" }}>No items</td>
+              </tr>
+            )}
           </tbody>
         </table>
 
-        {freeItems.length > 0 && (
-          <div style={{ marginTop: 8, fontSize: 12 }}>
-            <span style={{ fontWeight: 700 }}>Free Items:</span>{" "}
-            <span>{freeItemsText}</span>
-          </div>
-        )}
-
-        <div style={{ borderTop: "1px solid #000", margin: "10px 0" }} />
-
-        {showTotals && (
-          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Subtotal</span><span>{money(subtotal)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Discount</span><span>{money(discount)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
-              <span>Total</span><span>{money(grandTotal)}</span>
+        <div className="inv-bottom-grid">
+          <div className="inv-bank-box">
+            <div className="inv-bank-headline">Cheques should be drawn in favor of <b>APEX LOGISTICS</b> &amp; Crossed <b>A/C Payee Only</b></div>
+            <div className="inv-bank-title">Bank Details:</div>
+            <div className="inv-bank-box_sub">
+              <div className="inv-bank-line">Account Name - APEX LOGISTICS (PVT) LIMITED</div>
+              <div className="inv-bank-line">Bank Name - PAN ASIA BANK</div>
+              <div className="inv-bank-line">Acc No - 103911100125</div>
             </div>
           </div>
-        )}
-
-        <div style={{ borderTop: "1px solid #000", margin: "10px 0" }} />
-
-        {showPayment && (
-          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Payment</span><span>{paymentMethod}</span>
+          <div className="inv-total-box">
+            <div className="inv-total-row inv-total-row-main">
+              <span>TOTAL :</span><span>{money(subtotal)}</span>
+            </div>
+            <div className="inv-total-row inv-total-row-main">
+              <span>ITEM DISCOUNT :</span><span>{money(totalItemDiscount)}</span>
+            </div>
+            {freeItems.length > 0 && (<div className="inv-total-row inv-total-row-main inv-free-items-row"><span>FREE ITEMS :</span><span>{freeItemsText}</span></div>)}
+            <div className="inv-total-row inv-total-row-main">
+              <span>(VAT % 0.000) :</span><span>-</span>
+            </div>
+            <div className="inv-grand-row">
+              <span>GRAND TOTAL :</span><span className="inv-grand-value">{money(grandTotal)}</span>
+            </div>
+            <div className="inv-total-row">
+              <span>PAYMENT :</span><span>{paymentMethod}</span>
             </div>
             {paymentMethod === "cash" && (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Cash</span><span>{money(cashReceived || 0)}</span>
+                <div className="inv-total-row">
+                  <span>CASH :</span><span>{money(cashReceived || 0)}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Change</span><span>{money(balance || 0)}</span>
+                <div className="inv-total-row">
+                  <span>BALANCE :</span><span>{money(balance || 0)}</span>
                 </div>
               </>
             )}
           </div>
-        )}
+        </div>
 
-        <div style={{ borderTop: "1px solid #000", margin: "10px 0" }} />
-        {footerLines.map((line, idx) => (
-          <div key={`ftr-${idx}`} style={{ textAlign: "center", fontSize: 11 }}>
-            {line}
-          </div>
-        ))}
+        <div className="inv-credit-note">MAXIMUM CREDIT PERIOD 55 DAYS. [ NO EXCEPTION ]</div>
+        <div className="inv-thanks">Thank you for business with us!</div>
+
+        <div className="inv-signatures">
+          <div><div className="inv-sign-line" />Checked by</div>
+          <div><div className="inv-sign-line" />Recieved by</div>
+          <div><div className="inv-sign-line" />Delivered by</div>
+        </div>
+
+        <div className="inv-powered" >Powered by J&co.</div>
       </div>
     );
   }
@@ -261,3 +348,9 @@ export default function ReceiptPrint(props) {
     </div>
   );
 }
+
+
+
+
+
+

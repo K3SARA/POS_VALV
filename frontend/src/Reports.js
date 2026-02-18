@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { apiFetch, getRole } from "./api";
 import ReceiptPrint from "./ReceiptPrint";
 import { formatNumber } from "./utils/format";
+import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
 
 
 
@@ -318,6 +319,28 @@ const closeEdit = () => {
     }, 50);
   };
 
+  const handleViewPrintBill = (mode) => {
+    const layoutMode = mode || "3inch";
+
+    setViewPrintLayoutMode(layoutMode);
+    setViewPrintPrompt(false);
+
+    applyReceiptPrint(layoutMode);
+
+    const cleanup = () => {
+      cleanupReceiptPrint();
+      window.onafterprint = null;
+      window.removeEventListener("focus", cleanup);
+    };
+
+    window.onafterprint = cleanup;
+    window.addEventListener("focus", cleanup, { once: true });
+
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
+
   useEffect(() => {
     loadSales();
     loadCustomerOutstanding();
@@ -449,7 +472,7 @@ const closeEdit = () => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <h2 style={{ margin: 0 }}>Reports</h2>
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => navigate("/admin")} style={{ padding: 10 }}>🏠 Home</button>
+          <button onClick={() => navigate("/admin")} style={{ padding: 10 }}>{"\uD83C\uDFE0"} Home</button>
           <div ref={reportsMenuRef} style={{ position: "relative" }}>
             <button onClick={() => setShowReportsMenu((v) => !v)} style={{ padding: 10 }}>Reports</button>
             {showReportsMenu && (
@@ -517,7 +540,7 @@ const closeEdit = () => {
       <div className={`print-panel-area ${printPanelId === "sales-list" ? "print-panel-area" : ""}`} style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "nowrap", marginBottom: 8 }}>
           <h3 style={{ margin: 0, lineHeight: 1.1 }}>Sales List</h3>
-          <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+          <div style={{ display: "flex", gap: 8, marginLeft: "-80px", marginRight:"25px" }}>
             <button onClick={() => handlePrintPanel("sales-list")} className="print-hide" style={{ padding: 8 }}>
               Print
             </button>
@@ -703,10 +726,10 @@ const closeEdit = () => {
       <div className={`print-panel-area ${printPanelId === "cash-sales" ? "print-panel-area" : ""}`} style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <h3 style={{ marginTop: 0 }}>Cash Sales Report</h3>
-          <button onClick={() => setShowCashSales((v) => !v)} style={{ padding: 8 }}>
+          <button onClick={() => setShowCashSales((v) => !v)} style={{ padding: 8,marginright:"-150px" }}>
             {showCashSales ? "Hide" : "View"}
           </button>
-          <button onClick={() => handlePrintPanel("cash-sales")} className="print-hide" style={{ padding: 8 }}>
+          <button onClick={() => handlePrintPanel("cash-sales")} className="print-hide" style={{ padding: 8, marginLeft:"-860px" }}>
             Print
           </button>
         </div>
@@ -742,12 +765,9 @@ const closeEdit = () => {
                       <td>{s.customerAddress || s.customer?.address || "-"}</td>
                       <td>Rs {formatNumber(s.total)}</td>
                       {role === "admin" && (
-                        <td style={{ display: "flex", gap: 6 }}>
+                        <td style={{ display: "flex", gap: 6, alignItems: "center" }}>
                           <button onClick={() => openEdit(s.id)} style={{ padding: "6px 10px" }}>
                             Edit
-                          </button>
-                          <button onClick={() => openView(s.id)} style={{ padding: "6px 10px" }}>
-                            View
                           </button>
                           <button
                             onClick={() => deleteSale(s.id)}
@@ -759,6 +779,9 @@ const closeEdit = () => {
                             }}
                           >
                             Delete
+                          </button>
+                          <button onClick={() => openView(s.id)} style={{ padding: "6px 10px", marginLeft: "auto" }}>
+                            View
                           </button>
                         </td>
                       )}
@@ -863,7 +886,7 @@ const closeEdit = () => {
             style={{
               background: "var(--panel)",
               color: "var(--text)",
-              width: "min(520px, 100%)",
+              width: viewPrintLayoutMode === "a4" ? "min(980px, 96vw)" : "min(520px, 96vw)",
               borderRadius: 10,
               padding: 16,
               border: "1px solid var(--border)",
@@ -883,21 +906,13 @@ const closeEdit = () => {
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Print Size</div>
                 <div style={{ display: "flex", gap: 10 }}>
                   <button
-                    onClick={() => {
-                      setViewPrintLayoutMode("3inch");
-                      setViewPrintPrompt(false);
-                      setTimeout(() => window.print(), 100);
-                    }}
+                    onClick={() => handleViewPrintBill("3inch")}
                     style={{ padding: 10 }}
                   >
                     3 Inch
                   </button>
                   <button
-                    onClick={() => {
-                      setViewPrintLayoutMode("a4");
-                      setViewPrintPrompt(false);
-                      setTimeout(() => window.print(), 100);
-                    }}
+                    onClick={() => handleViewPrintBill("a4")}
                     style={{ padding: 10 }}
                   >
                     A4
@@ -913,7 +928,7 @@ const closeEdit = () => {
             {!viewSale ? (
               <p>Loading sale...</p>
             ) : (
-              <div id="print-area" style={{ background: "#fff", padding: 10, borderRadius: 8 }}>
+              <div id="print-area" style={{ background: "#fff", padding: 10, borderRadius: 8, overflowX: "hidden", maxHeight: "72vh" }}>
                 <ReceiptPrint
                   layout={(() => {
                     const layout = getBillLayoutFromStorage();
@@ -1041,7 +1056,7 @@ const closeEdit = () => {
             </div>
           </div>
 
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "hidden" }}>
             <table border="1" cellPadding="6" style={{ width: "100%", minWidth: 760, borderCollapse: "collapse" }}>
             <thead style={{ color: "#000" }}>
               <tr>
@@ -1121,4 +1136,9 @@ const closeEdit = () => {
     </div>
   );
 }
+
+
+
+
+
 

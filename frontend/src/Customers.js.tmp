@@ -299,7 +299,7 @@ export default function Customers() {
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button className="btn secondary print-hide" onClick={() => setViewRow(c)}>View</button>
                       <button className="btn secondary print-hide" onClick={() => openEdit(c)}>Edit</button>
-                      <button className="btn secondary print-hide" onClick={() => deleteCustomer(c.id)}>Delete</button>
+                      <button className="btn ghost print-hide" onClick={() => deleteCustomer(c.id)}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -350,6 +350,7 @@ export default function Customers() {
     </div>
   );
 }
+
 
 
 

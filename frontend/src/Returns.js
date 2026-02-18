@@ -63,7 +63,7 @@ export default function Returns({ onLogout }) {
   }, []);
 
 
-  // âœ… returns list state MUST be here (top-level), not inside submitReturn
+  // ??????? returns list state MUST be here (top-level), not inside submitReturn
   const [returnsList, setReturnsList] = useState([]);
 
   const saleItems = useMemo(() => sale?.saleItems || [], [sale?.saleItems]);
@@ -200,14 +200,14 @@ export default function Returns({ onLogout }) {
     }
   }, [reasonType]);
 
-  // âœ… Load returns list
+  // ??????? Load returns list
   const loadReturns = async () => {
     try {
       const data = await apiFetch("/returns");
       setReturnsList(Array.isArray(data) ? data : []);
     } catch (e) {
       // optional: keep silent
-      // setMsg("âŒ " + e.message);
+      // setMsg("?????? " + e.message);
     }
   };
 
@@ -251,7 +251,7 @@ export default function Returns({ onLogout }) {
     setTimeout(() => window.print(), 100);
   };
 
-  // âœ… Filter buttons use this
+  // ??????? Filter buttons use this
   const filteredReturns = useMemo(() => {
     if (filterReason === "ALL") return returnsList;
 
@@ -386,9 +386,9 @@ export default function Returns({ onLogout }) {
       setLoading(true);
       const data = await apiFetch(`/sales/${sid}`);
       setSale(data);
-      setMsg("âœ… Sale loaded. Select items to return.");
+      setMsg("??????? Sale loaded. Select items to return.");
     } catch (e) {
-      setMsg("âŒ " + e.message);
+      setMsg("?????? " + e.message);
     } finally {
       setLoading(false);
     }
@@ -402,7 +402,7 @@ export default function Returns({ onLogout }) {
       const data = await apiFetch(`/returns/${returnId}`);
       setViewReturn(data);
     } catch (e) {
-      setViewErr("âŒ " + e.message);
+      setViewErr("?????? " + e.message);
     }
   };
 
@@ -432,7 +432,7 @@ export default function Returns({ onLogout }) {
       setEditType(type);
       setEditReason(type === "OTHER" ? reasonText : "");
     } catch (e) {
-      setEditErr("âŒ " + e.message);
+      setEditErr("?????? " + e.message);
     }
   };
 
@@ -447,11 +447,11 @@ export default function Returns({ onLogout }) {
   const saveEditReturn = async () => {
     if (!editReturn) return;
     if (!editType) {
-      setEditErr("âŒ Select a return type");
+      setEditErr("?????? Select a return type");
       return;
     }
     if (editType === "OTHER" && !String(editReason || "").trim()) {
-      setEditErr("âŒ Reason is required");
+      setEditErr("?????? Reason is required");
       return;
     }
     try {
@@ -465,9 +465,9 @@ export default function Returns({ onLogout }) {
       });
       setEditReturn(res);
       await loadReturns();
-      setEditErr("âœ… Return updated");
+      setEditErr("??????? Return updated");
     } catch (e) {
-      setEditErr("âŒ " + e.message);
+      setEditErr("?????? " + e.message);
     } finally {
       setSavingEdit(false);
     }
@@ -479,9 +479,9 @@ export default function Returns({ onLogout }) {
     try {
       await apiFetch(`/returns/${returnId}`, { method: "DELETE" });
       await loadReturns();
-      setMsg("âœ… Return deleted");
+      setMsg("??????? Return deleted");
     } catch (e) {
-      setMsg("âŒ " + e.message);
+      setMsg("?????? " + e.message);
     }
   };
 
@@ -512,7 +512,7 @@ export default function Returns({ onLogout }) {
 
     const sid = Number(String(saleId || "").trim());
     if (!sid || sid < 1) {
-      setMsg("âŒ Enter a valid Sale ID");
+      setMsg("?????? Enter a valid Sale ID");
       return;
     }
 
@@ -525,7 +525,7 @@ export default function Returns({ onLogout }) {
       .filter((x) => x.qty > 0 || x.freeQty > 0);
 
     if (items.length === 0) {
-      setMsg("âŒ Select at least 1 item to return");
+      setMsg("?????? Select at least 1 item to return");
       return;
     }
 
@@ -547,11 +547,11 @@ export default function Returns({ onLogout }) {
     }
 
     if (!reasonType) {
-      setMsg("âŒ Select a return type");
+      setMsg("?????? Select a return type");
       return;
     }
     if (reasonType === "OTHER" && !String(customReason || "").trim()) {
-      setMsg("âŒ Reason is required");
+      setMsg("?????? Reason is required");
       return;
     }
 
@@ -568,15 +568,15 @@ export default function Returns({ onLogout }) {
         }),
       });
 
-      setMsg(`âœ… Return saved. Refund: Rs ${res?.totalRefund ?? totalRefund}`);
+      setMsg(`??????? Return saved. Refund: Rs ${res?.totalRefund ?? totalRefund}`);
 
       // reload sale after return (optional)
       await loadSale();
 
-      // âœ… refresh returns list so filters show new return instantly
+      // ??????? refresh returns list so filters show new return instantly
       await loadReturns();
     } catch (e) {
-      setMsg("âŒ " + e.message);
+      setMsg("?????? " + e.message);
     } finally {
       setLoading(false);
     }
@@ -609,7 +609,7 @@ export default function Returns({ onLogout }) {
       setExchangeBarcode("");
       setExchangeQty(1);
     } catch (e) {
-      setMsg("âŒ " + e.message);
+      setMsg("?????? " + e.message);
     }
   };
 
@@ -650,19 +650,19 @@ export default function Returns({ onLogout }) {
   const submitExchange = async () => {
     setExchangeMsg("");
     if (!reasonType) {
-      setExchangeMsg("âŒ Select a return type");
+      setExchangeMsg("?????? Select a return type");
       return;
     }
     if (reasonType === "OTHER" && !String(customReason || "").trim()) {
-      setExchangeMsg("âŒ Reason is required");
+      setExchangeMsg("?????? Reason is required");
       return;
     }
     if (!sale?.id) {
-      setExchangeMsg("âŒ Load a sale first");
+      setExchangeMsg("?????? Load a sale first");
       return;
     }
     if (exchangeItems.length === 0) {
-      setExchangeMsg("âŒ Add at least one exchange item");
+      setExchangeMsg("?????? Add at least one exchange item");
       return;
     }
 
@@ -696,12 +696,12 @@ export default function Returns({ onLogout }) {
 
       await apiFetch("/sales", { method: "POST", body: JSON.stringify(payload) });
 
-      setExchangeMsg(`âœ… Exchange completed. Net: Rs ${netAmount}`);
+      setExchangeMsg(`??????? Exchange completed. Net: Rs ${netAmount}`);
       setExchangeItems([]);
       setExchangeBarcode("");
       setExchangeQty(1);
     } catch (e) {
-      setExchangeMsg("âŒ " + e.message);
+      setExchangeMsg("?????? " + e.message);
     } finally {
       setLoading(false);
     }
@@ -710,9 +710,9 @@ export default function Returns({ onLogout }) {
   return (
     <div style={styles.page}>
       <div style={styles.header}>
-        <h2 style={styles.title}>â†©ï¸ Returns</h2>
+        <h2 style={styles.title}>{"\u21A9\uFE0F"} Returns</h2>
         <div style={{ ...styles.row, flexWrap: "wrap" }}>
-          <button onClick={() => navigate("/admin")} style={styles.btnGhost}>ðŸ  Home</button>
+          <button onClick={() => navigate("/admin")} style={styles.btnGhost}>{"\uD83C\uDFE0"} Home</button>
           <div ref={reportsMenuRef} style={{ position: "relative" }}>
             <button onClick={() => setShowReportsMenu((v) => !v)} style={styles.btnGhost}>Reports</button>
             {showReportsMenu && (
@@ -739,7 +739,7 @@ export default function Returns({ onLogout }) {
         </div>
       </div>
 
-      {/* âœ… Filter buttons */}
+      {/* ??????? Filter buttons */}
       <div style={styles.filters}>
         <button type="button" onClick={() => setFilterReason("ALL")} style={styles.chip(filterReason === "ALL")}>All</button>
         <button type="button" onClick={() => setFilterReason("GOOD")} style={styles.chip(filterReason === "GOOD")}>Good</button>
@@ -805,7 +805,7 @@ export default function Returns({ onLogout }) {
                   >
                     <div style={{ fontWeight: 700 }}>Sale #{s.id}</div>
                     <div style={{ fontSize: 12, color: "#000" }}>
-                      {new Date(s.createdAt).toLocaleString()} â€¢ {s.customer?.name || s.customerName || "Walk-in"} â€¢ Rs {s.total}
+                      {new Date(s.createdAt).toLocaleString()} - {s.customer?.name || s.customerName || "Walk-in"} - Rs {s.total}
                     </div>
                   </div>
                 ))}
@@ -1079,7 +1079,7 @@ export default function Returns({ onLogout }) {
                           >
                             <div style={{ fontWeight: 700 }}>{p.name}</div>
                             <div style={{ fontSize: 12 }}>
-                              {p.barcode} â€¢ Price: {p.price} â€¢ Stock: {p.stock}
+                              {p.barcode} ??????? Price: {p.price} ??????? Stock: {p.stock}
                             </div>
                           </div>
                         ))
@@ -1149,7 +1149,7 @@ export default function Returns({ onLogout }) {
                   Complete Exchange
                 </button>
                 {exchangeMsg && (
-                  <div style={{ marginTop: 8, color: exchangeMsg.startsWith("âœ…") ? "#16a34a" : "#ff6b6b" }}>
+                  <div style={{ marginTop: 8, color: exchangeMsg.startsWith("???????") ? "#16a34a" : "#ff6b6b" }}>
                     {exchangeMsg}
                   </div>
                 )}
@@ -1187,7 +1187,7 @@ export default function Returns({ onLogout }) {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0 }}>Return Bill</h3>
-              <button onClick={closeView} style={styles.btnGhost}>âœ•</button>
+              <button onClick={closeView} style={styles.btnGhost}>???????</button>
             </div>
 
             {viewErr && <p style={{ color: "#ff6b6b" }}>{viewErr}</p>}
@@ -1247,7 +1247,7 @@ export default function Returns({ onLogout }) {
         </div>
       )}
 
-      {/* âœ… Returns list (filtered) */}
+      {/* ??????? Returns list (filtered) */}
       {filteredReturnsByDate.map((r) => (
         <div key={r.id} style={styles.card}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -1298,10 +1298,10 @@ export default function Returns({ onLogout }) {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0 }}>Edit Return</h3>
-              <button onClick={closeEdit} style={styles.btnGhost}>âœ•</button>
+              <button onClick={closeEdit} style={styles.btnGhost}>???????</button>
             </div>
 
-            {editErr && <p style={{ color: editErr.startsWith("âœ…") ? "#16a34a" : "#ff6b6b" }}>{editErr}</p>}
+            {editErr && <p style={{ color: editErr.startsWith("???????") ? "#16a34a" : "#ff6b6b" }}>{editErr}</p>}
 
             {!editReturn ? (
               <p>Loading return...</p>
@@ -1318,21 +1318,21 @@ export default function Returns({ onLogout }) {
                     onClick={() => setEditType("GOOD")}
                     style={styles.reasonBtn(editType === "GOOD", "#e2e8f0")}
                   >
-                    âœ… Good
+                    ??????? Good
                   </button>
                   <button
                     type="button"
                     onClick={() => setEditType("DAMAGED_EXPIRED")}
                     style={styles.reasonBtn(editType === "DAMAGED_EXPIRED", "#fee2e2")}
                   >
-                    âš ï¸ Damaged / Expired
+                    ???????????? Damaged / Expired
                   </button>
                   <button
                     type="button"
                     onClick={() => setEditType("OTHER")}
                     style={styles.reasonBtn(editType === "OTHER", "#ffedd5")}
                   >
-                    âœï¸ Other
+                    ???????????? Other
                   </button>
                 </div>
 
@@ -1361,5 +1361,7 @@ export default function Returns({ onLogout }) {
     </div>
   );
 }
+
+
 
 

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "./api";
 import { formatNumber } from "./utils/format";
-import Papa from "papaparse";
 
 
 export default function Customers() {
@@ -27,72 +26,6 @@ export default function Customers() {
     localStorage.removeItem("role");
     navigate("/login");
   };
-  const handleImportCustomers = async (event) => {
-  const file = event.target.files?.[0];
-  event.target.value = "";
-  if (!file) return;
-
-  try {
-    setLoading(true);
-    setMsg("");
-
-    const parsed = await new Promise((resolve, reject) => {
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (result) => resolve(result.data || []),
-        error: reject,
-      });
-    });
-
-    let created = 0, updated = 0, skipped = 0, failed = 0;
-
-    for (const row of parsed) {
-      const customerId = String(row.customerId || row.customerid || row.id || "").trim();
-      const name = String(row.name || "").trim();
-      const phone = String(row.phone || "").trim();
-      const address = String(row.address || "").trim();
-
-      if (!name) { skipped += 1; continue; }
-
-      try {
-        if (customerId) {
-          let exists = false;
-          try { await apiFetch(`/customers/${encodeURIComponent(customerId)}`); exists = true; } catch {}
-          if (exists) {
-            await apiFetch(`/customers/${encodeURIComponent(customerId)}`, {
-              method: "PUT",
-              body: JSON.stringify({ name, phone: phone || null, address: address || null }),
-            });
-            updated += 1;
-          } else {
-            await apiFetch("/customers", {
-              method: "POST",
-              body: JSON.stringify({ customerId, name, phone: phone || null, address: address || null }),
-            });
-            created += 1;
-          }
-        } else {
-          await apiFetch("/customers", {
-            method: "POST",
-            body: JSON.stringify({ name, phone: phone || null, address: address || null }),
-          });
-          created += 1;
-        }
-      } catch {
-        failed += 1;
-      }
-    }
-
-    await loadCustomers();
-    setMsg(`Import complete: ${created} created, ${updated} updated, ${skipped} skipped, ${failed} failed`);
-  } catch (e) {
-    setMsg("Error: " + e.message);
-  } finally {
-    setLoading(false);
-  }
-};
-
 
   const loadCustomers = async () => {
     try {
@@ -102,7 +35,7 @@ export default function Customers() {
         apiFetch("/customers/all"),
         apiFetch("/reports/customer-outstanding"),
       ]);
-      setRows(Array.isArray(customers) ? customers.filter((c) => c?.isActive !== false) : []);
+      setRows(Array.isArray(customers) ? customers : []);
       const map = {};
       (outstanding?.rows || []).forEach((r) => {
         if (r?.customerId) map[r.customerId] = Number(r.outstanding || 0);
@@ -205,7 +138,7 @@ export default function Customers() {
     }
   };
 
-  const sortLabel = (key, label) => `${label}`;
+  const sortLabel = (key, label) => `${label}${sortKey === key ? (sortDir === "asc" ? " ????????" : " ????????") : ""}`;
 
   return (
     <div className="admin-shell">
@@ -220,7 +153,7 @@ export default function Customers() {
         .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
         .banner { background: var(--panel); border: 1px solid var(--border); padding: 10px 14px; border-radius: 10px; font-weight: 600; margin-bottom: 16px; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        thead th { text-align: left; padding: 10px; background: #000000 !important; color: #ffffff; border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; opacity: 1; }
+        thead th { text-align: left; padding: 10px; background: rgba(255, 255, 255, 0.04); border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; }
         tbody td { padding: 10px; border-bottom: 1px solid var(--border); }
         tbody tr:hover { background: #ffffff; color: #000000; }
         tbody tr:hover td { color: #000000; }
@@ -232,7 +165,7 @@ export default function Customers() {
       <div className="admin-content">
         <h2 style={{ marginTop: 0 }}>Customers</h2>
         <div className="actions print-hide">
-          <button className="btn ghost" onClick={() => navigate("/admin")}>Home</button>
+          <button className="btn ghost" onClick={() => navigate("/admin")}>???? Home</button>
           <div ref={reportsMenuRef} style={{ position: "relative" }}>
             <button className="btn ghost" onClick={() => setShowReportsMenu((v) => !v)}>Reports</button>
             {showReportsMenu && (
@@ -268,8 +201,6 @@ export default function Customers() {
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn secondary print-hide" onClick={() => window.print()}>Print</button>
-              <button className="btn secondary print-hide" onClick={() => customerImportInputRef.current?.click()} disabled={loading}>Import Customers</button>
-              <input ref={customerImportInputRef} type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={handleImportCustomers} />
               <button className="btn secondary print-hide" onClick={loadCustomers} disabled={loading}>Refresh</button>
             </div>
           </div>
@@ -299,7 +230,7 @@ export default function Customers() {
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button className="btn secondary print-hide" onClick={() => setViewRow(c)}>View</button>
                       <button className="btn secondary print-hide" onClick={() => openEdit(c)}>Edit</button>
-                      <button className="btn secondary print-hide" onClick={() => deleteCustomer(c.id)}>Delete</button>
+                      <button className="btn ghost print-hide" onClick={() => deleteCustomer(c.id)}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -350,9 +281,6 @@ export default function Customers() {
     </div>
   );
 }
-
-
-
 
 
 

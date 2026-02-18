@@ -854,33 +854,19 @@ app.put("/customers/:id", auth, requireAnyRole("admin", "cashier"), async (req, 
 
 app.delete("/customers/:id", auth, requireAnyRole("admin", "cashier"), async (req, res) => {
   try {
-    const id = String(req.params.id || "").trim();
+    const id = String(req.params.id).trim();
     if (!id) return res.status(400).json({ error: "Invalid customer id" });
 
-    await prisma.$transaction(async (tx) => {
-      const c = await tx.customer.findUnique({
-        where: { id },
-        select: { name: true },
-      });
-
-      // Keep old sales readable after customer row is removed
-      await tx.sale.updateMany({
-        where: { customerId: id },
-        data: {
-          customerName: c?.name || null,
-          customerId: null,
-        },
-      });
-
-      await tx.customer.delete({ where: { id } });
+    const updated = await prisma.customer.update({
+      where: { id },
+      data: { isActive: false },
     });
 
-    return res.json({ ok: true, id, deleted: true });
+    res.json(updated);
   } catch (e: any) {
-    return res.status(400).json({ error: e.message || "Failed to delete customer" });
+    res.status(400).json({ error: e.message || "Failed to deactivate customer" });
   }
 });
-
 
 
 
@@ -910,36 +896,33 @@ app.post("/sales", auth, async (req: AuthedRequest, res) => {
 
     const sale = await prisma.$transaction(async (tx) => {
       // customer optional
-      
-      let customerId: string | null = null;
-      let customerNameForSale: string | null = null;
+      // customer optional
+let customerId: string | null = null;
 
-      if (customer && typeof customer === "object") {
-        const name = String(customer.name || "").trim();
-        const phone = String(customer.phone || "").trim();
-        const address = String(customer.address || "").trim();
+if (customer && typeof customer === "object") {
+  const name = String(customer.name || "").trim();
+  const phone = String(customer.phone || "").trim();
+  const address = String(customer.address || "").trim();
 
-        if (name) {
-          customerNameForSale = name;
+  if (name) {
+    const existing = phone
+      ? await tx.customer.findFirst({ where: { phone } })
+      : null;
 
-          const existing = phone
-            ? await tx.customer.findFirst({ where: { phone } })
-            : null;
+    const cust = existing
+      ? existing
+      : await tx.customer.create({
+          data: {
+            name,
+            phone: phone || null,
+            address: address || null,
+          },
+        });
 
-          const cust = existing
-            ? existing
-            : await tx.customer.create({
-                data: {
-                  name,
-                  phone: phone || null,
-                  address: address || null,
-                },
-              });
-
-          customerId = cust.id;
-        }
-      }
-
+    // ✅ IMPORTANT: assign the customerId for the sale
+    customerId = cust.id;
+  }
+}
 
       const pmRaw = String(paymentMethod || "cash").toLowerCase();
       const pm =
@@ -962,16 +945,13 @@ app.post("/sales", auth, async (req: AuthedRequest, res) => {
 
       const newSale = await tx.sale.create({
         data: {
-            
+          
           total: new Prisma.Decimal(0),
-          customerName: customerNameForSale,
           ...(customerId ? { customer: { connect: { id: customerId } } } : {}),
           ...(createdById ? { createdBy: { connect: { id: createdById } } } : {}),
           paymentMethod: pm,
           discountType: dt,
           discountValue: new Prisma.Decimal(safeDv),
-          
-
         },
       });
 
@@ -1016,7 +996,6 @@ app.post("/sales", auth, async (req: AuthedRequest, res) => {
 
         await tx.saleItem.create({
           data: {
-            
             sale: { connect: { id: newSale.id } },
             product: { connect: { id: product.id } },
             qty,
