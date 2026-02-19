@@ -19,6 +19,36 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const DEMO_MODE = process.env.DEMO_MODE === "true";
+
+app.use((req, res, next) => {
+  if (!DEMO_MODE) return next();
+
+  const method = req.method.toUpperCase();
+  const isWrite =
+    method === "POST" ||
+    method === "PUT" ||
+    method === "PATCH" ||
+    method === "DELETE";
+
+  // allow login in demo
+  const allowInDemo =
+    req.path === "/auth/login" ||
+    req.path === "/auth/me" ||
+    req.path === "/auth/setup-admin"; // optional, remove after admin created
+
+  if (isWrite && !allowInDemo) {
+    return res.status(200).json({
+      ok: true,
+      demo: true,
+      message: "Demo mode: changes are not saved",
+    });
+  }
+
+  return next();
+});
+
+
 // ------------------- TYPES -------------------
 type AuthedRequest = express.Request & { user?: any };
 
