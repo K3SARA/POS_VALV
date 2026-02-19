@@ -780,7 +780,7 @@ const createCustomer = async (e) => {
       <div className="admin-content">
         <div className="topbar">
           <div className="title">
-            <h2>Admin Dashboard | Apex Logistics</h2>
+            <h2>Admin Dashboard | Demo</h2>
             <div className="subtitle-row">
               <span>Minimal control center for your POS</span>
               <div className="partner-inline">
