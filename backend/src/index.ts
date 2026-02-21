@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import bcrypt from "bcrypt";
@@ -18,6 +18,34 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+const DEMO_MODE = process.env.DEMO_MODE === "true";
+
+app.use((req, res, next) => {
+  if (!DEMO_MODE) return next();
+
+  const method = req.method.toUpperCase();
+  const isWrite = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
+
+  // allow only auth endpoints needed for demo login
+  const allowInDemo =
+    req.path === "/auth/login" ||
+    req.path === "/auth/me" ||
+    req.path === "/auth/setup-admin"; // keep only until demo admin is created
+
+  if (isWrite && !allowInDemo) {
+    return res.status(200).json({
+      ok: true,
+      demo: true,
+      blocked: true,
+      message: "Demo mode: changes are not saved",
+    });
+  }
+
+  return next();
+});
+
+
 
 // ------------------- TYPES -------------------
 type AuthedRequest = express.Request & { user?: any };
@@ -179,7 +207,7 @@ console.log("DB PASSWORD HASH:", user?.password);
       return res.status(401).json({ error: "Invalid username/password" });
     }
 
-    // ✅ Cashiers are bcrypt-hashed; admin may be plain (for now)
+    // âœ… Cashiers are bcrypt-hashed; admin may be plain (for now)
     let ok = false;
     if (typeof user.password === "string" && user.password.startsWith("$2")) {
       ok = await bcrypt.compare(p, user.password);
@@ -378,12 +406,24 @@ app.post("/cashier/day/start", auth, requireRole("cashier"), async (req: AuthedR
   const userId = getReqUserId(req);
   if (!userId) return res.status(401).json({ error: "No user id" });
   const route = String(req.body?.route || "").trim();
-  if (!route) return res.status(400).json({ error: "Route is required" });
   try {
-    const routeRow = await prisma.route.findFirst({
-      where: { name: route, isActive: true },
-    });
-    if (!routeRow) return res.status(400).json({ error: "Invalid route. Select an active route." });
+    // Route is optional for mobile start-day flow.
+    // If route is missing/invalid, attach the first active route if available; otherwise use NO_ROUTE.
+    let routeRow = null as null | { id: number; name: string };
+    if (route) {
+      routeRow = await prisma.route.findFirst({
+        where: { name: route, isActive: true },
+        select: { id: true, name: true },
+      });
+    }
+    if (!routeRow) {
+      routeRow = await prisma.route.findFirst({
+        where: { isActive: true },
+        orderBy: { id: "asc" },
+        select: { id: true, name: true },
+      });
+    }
+    const finalRouteName = routeRow?.name || "NO_ROUTE";
 
     const existing = await ensureCashierDayStarted(userId);
     if (existing) return res.status(400).json({ error: "Day already started", session: existing });
@@ -391,8 +431,8 @@ app.post("/cashier/day/start", auth, requireRole("cashier"), async (req: AuthedR
       data: {
         userId,
         dayKey: getDayKey(),
-        route: routeRow.name,
-        routeId: routeRow.id,
+        route: finalRouteName,
+        routeId: routeRow?.id ?? null,
       },
       include: {
         user: { select: { id: true, username: true, role: true } },
@@ -520,13 +560,23 @@ app.post("/customers", auth, async (req, res) => {
   try {
     const { customerId, name, phone, address } = req.body || {};
 
-    const safeCustomerId = customerId ? String(customerId).trim() : "";
+    let safeCustomerId = customerId ? String(customerId).trim() : "";
     const safeName = String(name || "").trim();
     const safePhone = phone ? String(phone).trim() : null;
     const safeAddress = address ? String(address).trim() : null;
 
     if (!safeName) {
       return res.status(400).json({ error: "Customer name is required" });
+    }
+
+    if (!safeCustomerId) {
+      const last = await prisma.customer.findFirst({
+        where: { id: { startsWith: "VAL" } },
+        orderBy: { id: "desc" },
+      });
+      const lastNum = last?.id ? Number(String(last.id).replace(/^VAL/i, "")) : 0;
+      const nextNum = Number.isFinite(lastNum) ? lastNum + 1 : 1;
+      safeCustomerId = `VAL${String(nextNum).padStart(5, "0")}`;
     }
 
     const customer = await prisma.customer.create({
@@ -549,7 +599,7 @@ app.post("/customers", auth, async (req, res) => {
 });
 
 /**
- * ✅ CASHIER + ADMIN customer dropdown/search (WORKS ALL DBs)
+ * âœ… CASHIER + ADMIN customer dropdown/search (WORKS ALL DBs)
  * Fixes:
  * - no ILIKE
  * - no queryRaw
@@ -561,12 +611,17 @@ app.get("/customers", auth, async (req, res) => {
   try {
     const args: Prisma.CustomerFindManyArgs = {
       orderBy: { id: "desc" },
-      take: 20,
+      take: 100,
     };
 
     if (q) {
       args.where = {
-        OR: [{ name: { contains: q } }, { phone: { contains: q } }],
+        OR: [
+          { id: { contains: q, mode: "insensitive" } },
+          { name: { contains: q, mode: "insensitive" } },
+          { phone: { contains: q, mode: "insensitive" } },
+          { address: { contains: q, mode: "insensitive" } },
+        ],
       };
     }
 
@@ -578,7 +633,7 @@ app.get("/customers", auth, async (req, res) => {
   }
 });
 
-// ✅ ADMIN only: load all customers for admin dashboard table
+// âœ… ADMIN only: load all customers for admin dashboard table
 app.get("/customers/all", auth, requireRole("admin"), async (req, res) => {
   try {
     const customers = await prisma.customer.findMany({
@@ -626,8 +681,13 @@ app.get("/products/search", async (req, res) => {
 
   try {
     const products = await prisma.product.findMany({
-      where: { OR: [{ barcode: { contains: q } }, { name: { contains: q } }] },
-      take: 20,
+      where: {
+        OR: [
+          { barcode: { contains: q, mode: "insensitive" } },
+          { name: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      take: 100,
       orderBy: { name: "asc" },
     });
 
@@ -698,7 +758,7 @@ app.post("/products", auth, requireRole("admin"), async (req, res) => {
             : null,
         stock: Number(stock || 0),
 
-        // ✅ new optional fields
+        // âœ… new optional fields
         supplierName: supplierName ? String(supplierName) : null,
         supplierInvoiceNo: supplierInvoiceNo ? String(supplierInvoiceNo) : null,
         supplierPaymentMethod: safePm,
@@ -718,8 +778,28 @@ app.post("/products", auth, requireRole("admin"), async (req, res) => {
 // Update product (admin only)
 app.put("/products/:barcode", auth, requireRole("admin"), async (req, res) => {
   try {
-    const { name, price, billingPrice, invoicePrice, stock } = req.body || {};
+    const {
+      name,
+      price,
+      billingPrice,
+      invoicePrice,
+      stock,
+      supplierName,
+      supplierInvoiceNo,
+      supplierPaymentMethod,
+      receivedDate,
+      invoicePhoto,
+    } = req.body || {};
     const barcode = String(req.params.barcode);
+
+    const pmRaw =
+      supplierPaymentMethod !== undefined && supplierPaymentMethod !== null
+        ? String(supplierPaymentMethod).trim().toLowerCase()
+        : null;
+    const safePm =
+      pmRaw === "cash" || pmRaw === "credit" || pmRaw === "cheque"
+        ? pmRaw
+        : null;
 
     const updated = await prisma.product.update({
       where: { barcode },
@@ -737,6 +817,21 @@ app.put("/products/:barcode", auth, requireRole("admin"), async (req, res) => {
             }
           : {}),
         ...(stock !== undefined ? { stock: Number(stock) } : {}),
+        ...(supplierName !== undefined
+          ? { supplierName: supplierName ? String(supplierName) : null }
+          : {}),
+        ...(supplierInvoiceNo !== undefined
+          ? { supplierInvoiceNo: supplierInvoiceNo ? String(supplierInvoiceNo) : null }
+          : {}),
+        ...(supplierPaymentMethod !== undefined
+          ? { supplierPaymentMethod: safePm }
+          : {}),
+        ...(receivedDate !== undefined
+          ? { receivedDate: receivedDate ? new Date(String(receivedDate)) : null }
+          : {}),
+        ...(invoicePhoto !== undefined
+          ? { invoicePhoto: invoicePhoto ? String(invoicePhoto) : null }
+          : {}),
       },
     });
 
@@ -832,18 +927,49 @@ app.put("/customers/:id", auth, requireAnyRole("admin", "cashier"), async (req, 
       return res.status(400).json({ error: "Invalid customer id" });
     }
 
-    const { name, phone, address, notes, isActive } = req.body || {};
+    const { name, phone, address, notes, isActive, newCustomerId } = req.body || {};
+    const nextId = newCustomerId ? String(newCustomerId).trim() : "";
 
-    const updated = await prisma.customer.update({
-      where: { id },
-      data: {
-        ...(name !== undefined ? { name: String(name).trim() } : {}),
-        ...(phone !== undefined ? { phone: phone ? String(phone).trim() : null } : {}),
-        ...(address !== undefined ? { address: address ? String(address).trim() : null } : {}),
-        ...(notes !== undefined ? { notes: notes ? String(notes).trim() : null } : {}),
-        ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
-      },
-    });
+    let updated;
+    if (nextId && nextId !== id) {
+      const exists = await prisma.customer.findUnique({ where: { id: nextId } });
+      if (exists) {
+        return res.status(400).json({ error: "Customer ID already exists" });
+      }
+      const current = await prisma.customer.findUnique({ where: { id } });
+      if (!current) {
+        return res.status(404).json({ error: "Customer not found" });
+      }
+      updated = await prisma.$transaction(async (tx) => {
+        const newCustomer = await tx.customer.create({
+          data: {
+            id: nextId,
+            name: name !== undefined ? String(name).trim() : current.name,
+            phone: phone !== undefined ? (phone ? String(phone).trim() : null) : current.phone,
+            address: address !== undefined ? (address ? String(address).trim() : null) : current.address,
+            notes: notes !== undefined ? (notes ? String(notes).trim() : null) : current.notes,
+            isActive: isActive !== undefined ? Boolean(isActive) : current.isActive,
+          },
+        });
+        await tx.sale.updateMany({
+          where: { customerId: id },
+          data: { customerId: nextId },
+        });
+        await tx.customer.delete({ where: { id } });
+        return newCustomer;
+      });
+    } else {
+      updated = await prisma.customer.update({
+        where: { id },
+        data: {
+          ...(name !== undefined ? { name: String(name).trim() } : {}),
+          ...(phone !== undefined ? { phone: phone ? String(phone).trim() : null } : {}),
+          ...(address !== undefined ? { address: address ? String(address).trim() : null } : {}),
+          ...(notes !== undefined ? { notes: notes ? String(notes).trim() : null } : {}),
+          ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
+        },
+      });
+    }
 
     res.json(updated);
   } catch (e: any) {
@@ -993,7 +1119,7 @@ app.post("/sales", auth, async (req: AuthedRequest, res) => {
                 const unitPrice = Number(product.price);
         const lineBase = unitPrice * qty;
 
-        // ✅ item-wise discount from frontend (optional)
+        // âœ… item-wise discount from frontend (optional)
         const dtRaw = String(item.itemDiscountType || "none");
         const dt =
           dtRaw === "amount" || dtRaw === "percent" || dtRaw === "none" ? dtRaw : "none";
@@ -1023,12 +1149,12 @@ app.post("/sales", auth, async (req: AuthedRequest, res) => {
             freeQty,
             price: product.price,
 
-            // ✅ save discount info in SaleItem (new columns)
+            // âœ… save discount info in SaleItem (new columns)
             itemDiscountType: dt === "none" ? null : dt,
             itemDiscountValue: dt === "none" ? null : new Prisma.Decimal(lineDisc),
             barcode: product.barcode ?? String(item.barcode),
 
-            // ❌ remove barcode from saleItem (recommended)
+            // âŒ remove barcode from saleItem (recommended)
             // If your SaleItem still has barcode in schema, keep this line:
             // barcode: product.barcode ?? String(item.barcode),
           },
@@ -1580,9 +1706,9 @@ app.get("/reports/customer-outstanding", auth, async (req, res) => {
     });
 
     const map = new Map<
-      string,
-      { customerId: string; name: string; phone: string; address: string; outstanding: number }
-    >();
+        string,
+        { customerId: string; name: string; phone: string; address: string; outstanding: number; totalBillValue: number }
+      >();
 
     for (const s of outstandingSales) {
       if (!s.customerId || !s.customer) continue;
@@ -1593,8 +1719,10 @@ app.get("/reports/customer-outstanding", auth, async (req, res) => {
         phone: s.customer.phone || "",
         address: s.customer.address || "",
         outstanding: 0,
+          totalBillValue: 0,
       };
       existing.outstanding += Number(s.outstanding || 0);
+        existing.totalBillValue += Number(s.total || 0);
       map.set(key, existing);
     }
 
@@ -2094,7 +2222,7 @@ if (hasFrontendBuild) {
 }
 
 /**
- * ✅ Fixes your crash: "Missing parameter name at index 1: *"
+ * âœ… Fixes your crash: "Missing parameter name at index 1: *"
  * Use a safe wildcard that works cleanly.
  */
 if (hasFrontendBuild) {
@@ -2114,3 +2242,8 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log("Backend running on port", PORT);
 });
+
+
+
+
+

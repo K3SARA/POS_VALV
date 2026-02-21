@@ -331,33 +331,23 @@ export default function CashierScreen() {
   function ensureDayStartedForAction() {
     if (!requiresStartDay) return true;
     if (dayStarted) return true;
-    setError("Tap Start Day and select route before billing.");
+    setError("Tap Start Day before billing.");
     setShowRouteModal(true);
     return false;
   }
 
   async function startDay() {
-    const route = String(routeInput || "").trim();
-    if (!route) {
-      setError("Route is required");
-      return;
-    }
-    const exists = routes.some((r) => String(r?.name || "") === route && Boolean(r?.isActive));
-    if (!exists) {
-      setError("Select a valid active route");
-      return;
-    }
     try {
       setLoading(true);
       setError("");
-      await apiFetch("/cashier/day/start", {
+      const data = await apiFetch("/cashier/day/start", {
         method: "POST",
-        body: JSON.stringify({ route }),
+        body: JSON.stringify({}),
       });
       setDayStarted(true);
-      setDayRoute(route);
+      setDayRoute(String(data?.session?.route || ""));
       setShowRouteModal(false);
-      setMessage(`Day started (${route})`);
+      setMessage(`Day started${data?.session?.route ? ` (${data.session.route})` : ""}`);
     } catch (e) {
       setError(e.message || "Failed to start day");
     } finally {
@@ -924,35 +914,9 @@ export default function CashierScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Start Day</Text>
-            <Text style={styles.meta}>Select Route (admin managed, required once per day)</Text>
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              {routes.length === 0 ? (
-                <Text style={styles.error}>No active routes. Ask admin to add routes.</Text>
-              ) : (
-                routes
-                  .filter((r) => Boolean(r?.isActive))
-                  .map((r) => {
-                    const name = String(r?.name || "");
-                    const active = routeInput === name;
-                    return (
-                      <Pressable
-                        key={String(r?.id || name)}
-                        style={[styles.methodChip, active && styles.methodChipActive]}
-                        onPress={() => setRouteInput(name)}
-                      >
-                        <Text style={[styles.methodText, active && styles.methodTextActive]}>{name}</Text>
-                      </Pressable>
-                    );
-                  })
-              )}
-            </View>
-            {routeInput ? <Text style={styles.meta}>Selected Route: {routeInput}</Text> : null}
+            <Text style={styles.meta}>Start day once before billing</Text>
             <View style={styles.modalActions}>
-              <Pressable
-                style={[styles.action, (!routeInput || routes.length === 0) && styles.btnDisabled]}
-                onPress={startDay}
-                disabled={!routeInput || routes.length === 0}
-              >
+              <Pressable style={styles.action} onPress={startDay}>
                 <Text style={styles.actionText}>Start Day</Text>
               </Pressable>
               <Pressable style={styles.closeBtn} onPress={() => setShowRouteModal(false)}>
