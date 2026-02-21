@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
+import TopNav from "./TopNav";
 import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
 import { formatNumber } from "./utils/format";
 
@@ -711,32 +712,7 @@ export default function Returns({ onLogout }) {
     <div style={styles.page}>
       <div style={styles.header}>
         <h2 style={styles.title}>{"\u21A9\uFE0F"} Returns</h2>
-        <div style={{ ...styles.row, flexWrap: "wrap" }}>
-          <button onClick={() => navigate("/admin")} style={styles.btnGhost}>{"\uD83C\uDFE0"} Home</button>
-          <div ref={reportsMenuRef} style={{ position: "relative" }}>
-            <button onClick={() => setShowReportsMenu((v) => !v)} style={styles.btnGhost}>Reports</button>
-            {showReportsMenu && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-                <button onClick={() => { setShowReportsMenu(false); navigate("/reports"); }} style={styles.btnGhost}>Sales Reports</button>
-                <button onClick={() => { setShowReportsMenu(false); navigate("/reports/items"); }} style={styles.btnGhost}>Item-wise Report</button>
-              </div>
-            )}
-          </div>
-          <button onClick={() => navigate("/returns")} style={styles.btnGhost}>Returns</button>
-          <div ref={stockMenuRef} style={{ position: "relative" }}>
-            <button onClick={() => setShowStockMenu((v) => !v)} style={styles.btnGhost}>Stock</button>
-            {showStockMenu && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-                <button onClick={() => { setShowStockMenu(false); navigate("/stock"); }} style={styles.btnGhost}>Current Stock</button>
-                <button onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }} style={styles.btnGhost}>Returned Stock</button>
-              </div>
-            )}
-          </div>
-          <button onClick={() => navigate("/customers")} style={styles.btnGhost}>Customers</button>
-          <button onClick={() => navigate("/end-day")} style={styles.btnGhost}>End Day</button>
-          <button onClick={() => navigate("/billing")} style={styles.btnGhost}>Billing</button>
-          <button onClick={onLogout} style={{ ...styles.btn, background: "#dc2626", color: "#fff", border: "1px solid #b91c1c" }}>Logout</button>
-        </div>
+        <TopNav onLogout={onLogout} />
       </div>
 
       {/* ??????? Filter buttons */}
@@ -1361,6 +1337,8 @@ export default function Returns({ onLogout }) {
     </div>
   );
 }
+
+
 
 
 

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
+import TopNav from "./TopNav";
 import { formatNumber } from "./utils/format";
 
 export default function AdminDashboard({ onLogout }) {
@@ -788,76 +789,9 @@ const createCustomer = async (e) => {
               </div>
             </div>
           </div>
-          <div className="actions">
-            <button className="btn ghost" onClick={() => navigate("/admin")}>🏠 Home</button>
-            <div className="menu-wrap" ref={reportsMenuRef}>
-              <button
-                className="btn ghost"
-                onClick={() => setShowReportsPopup((v) => !v)}
-              >
-                Reports
-              </button>
-              {showReportsPopup && (
-                <div className="menu-panel">
-                  <button
-                    className="btn secondary"
-                    onClick={() => {
-                      setShowReportsPopup(false);
-                      navigate("/reports");
-                    }}
-                  >
-                    Sales Reports
-                  </button>
-                  <button
-                    className="btn secondary"
-                    onClick={() => {
-                      setShowReportsPopup(false);
-                      navigate("/reports/items");
-                    }}
-                  >
-                    Item-wise Report
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <button className="btn ghost" onClick={() => navigate("/returns")}>Returns</button>
-            <div className="menu-wrap" ref={stockMenuRef}>
-              <button
-                className="btn ghost"
-                onClick={() => setShowStockMenu((v) => !v)}
-              >
-                Stock
-              </button>
-              {showStockMenu && (
-                <div className="menu-panel">
-                  <button
-                    className="btn secondary"
-                    onClick={() => {
-                      setShowStockMenu(false);
-                      navigate("/stock");
-                    }}
-                  >
-                    Current Stock
-                  </button>
-                  <button
-                    className="btn secondary"
-                    onClick={() => {
-                      setShowStockMenu(false);
-                      navigate("/stock/returned");
-                    }}
-                  >
-                    Returned Stock
-                  </button>
-                </div>
-              )}
-            </div>
-            <button className="btn ghost" onClick={() => navigate("/customers")}>Customers</button>
-            <button className="btn secondary" onClick={() => navigate("/end-day")}>End Day</button>
-            <button className="btn ghost" onClick={() => navigate("/billing")}>Billing</button>
-            <button className="btn danger" onClick={onLogout}>Logout</button>
-          </div>
+          <TopNav onLogout={onLogout} />
         </div>
+
         {msg && <div className="banner">{msg}</div>}
 
         {showLowStock && (
@@ -1108,7 +1042,7 @@ const createCustomer = async (e) => {
                 Print
               </button>
             </div>
-            <form className="form" onSubmit={createProduct}>
+            <form className="form" onSubmit={createProduct} autoComplete="off">
               <div className="input-group">
                 <label>Barcode</label>
                 <input value={barcode} onChange={(e) => setBarcode(e.target.value)} required />
@@ -1182,7 +1116,7 @@ const createCustomer = async (e) => {
                 Print
               </button>
             </div>
-            <form className="form" onSubmit={createUser}>
+            <form className="form" onSubmit={createUser} autoComplete="off">
               <div className="input-group">
                 <label>Username</label>
                 <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} required />
@@ -1209,7 +1143,7 @@ const createCustomer = async (e) => {
                 Print
               </button>
             </div>
-            <form className="form" onSubmit={createRoute}>
+            <form className="form" onSubmit={createRoute} autoComplete="off">
               <div className="input-group">
                 <label>Route Name</label>
                 <input
@@ -1247,7 +1181,7 @@ const createCustomer = async (e) => {
                 Print
               </button>
             </div>
-            <form className="form" onSubmit={createCustomer}>
+            <form className="form" onSubmit={createCustomer} autoComplete="off">
               <div className="input-group">
                 <label>Customer ID</label>
                 <input
@@ -1426,3 +1360,9 @@ const createCustomer = async (e) => {
 
 
 }
+
+
+
+
+
+

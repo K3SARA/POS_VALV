@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import TopNav from "./TopNav";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "./api";
 import { formatNumber } from "./utils/format";
@@ -15,12 +16,42 @@ export default function Customers() {
   const [sortDir, setSortDir] = useState("desc");
   const [viewRow, setViewRow] = useState(null);
   const [editRow, setEditRow] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", phone: "", address: "" });
+  const [editForm, setEditForm] = useState({ customerId: "", name: "", phone: "", address: "" });
+  const [searchQuery, setSearchQuery] = useState("");
   const [showReportsMenu, setShowReportsMenu] = useState(false);
   const [showStockMenu, setShowStockMenu] = useState(false);
   const reportsMenuRef = React.useRef(null);
   const stockMenuRef = React.useRef(null);
   const customerImportInputRef = React.useRef(null);
+  const downloadCustomersCsv = () => {
+    const headers = ["customerId", "name", "phone", "address", "outstanding", "createdAt"];
+    const lines = [headers.join(",")];
+    rows.forEach((c) => {
+      const values = [
+        c.id ?? "",
+        c.name ?? "",
+        c.phone ?? "",
+        c.address ?? "",
+        Number(outstandingMap[c.id] || 0),
+        c.createdAt ? new Date(c.createdAt).toISOString() : "",
+      ].map((v) => {
+        const s = String(v ?? "");
+        return s.includes(",") || s.includes("\"") || s.includes("\n")
+          ? `"${s.replace(/\"/g, "\"\"")}"`
+          : s;
+      });
+      lines.push(values.join(","));
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `customers_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const doLogout = () => {
     localStorage.removeItem("token");
@@ -40,6 +71,12 @@ export default function Customers() {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
+        transformHeader: (h) =>
+          String(h || "")
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, "")
+            .replace(/_/g, ""),
         complete: (result) => resolve(result.data || []),
         error: reject,
       });
@@ -48,7 +85,13 @@ export default function Customers() {
     let created = 0, updated = 0, skipped = 0, failed = 0;
 
     for (const row of parsed) {
-      const customerId = String(row.customerId || row.customerid || row.id || "").trim();
+      const customerId = String(
+        row.customerid ||
+          row.customer_id ||
+          row.customeridnumber ||
+          row.id ||
+          ""
+      ).trim();
       const name = String(row.name || "").trim();
       const phone = String(row.phone || "").trim();
       const address = String(row.address || "").trim();
@@ -144,7 +187,17 @@ export default function Customers() {
   };
 
   const sortedRows = useMemo(() => {
-    const data = [...rows];
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = q
+      ? rows.filter((c) => {
+          const id = String(c.id ?? "").toLowerCase();
+          const name = String(c.name ?? "").toLowerCase();
+          const phone = String(c.phone ?? "").toLowerCase();
+          const address = String(c.address ?? "").toLowerCase();
+          return id.includes(q) || name.includes(q) || phone.includes(q) || address.includes(q);
+        })
+      : rows;
+    const data = [...filtered];
     data.sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
       const av = a?.[sortKey];
@@ -160,11 +213,12 @@ export default function Customers() {
       return String(av || "").localeCompare(String(bv || "")) * dir;
     });
     return data;
-  }, [rows, sortKey, sortDir, outstandingMap]);
+  }, [rows, sortKey, sortDir, outstandingMap, searchQuery]);
 
   const openEdit = (c) => {
     setEditRow(c);
     setEditForm({
+      customerId: c.id || "",
       name: c.name || "",
       phone: c.phone || "",
       address: c.address || "",
@@ -178,6 +232,7 @@ export default function Customers() {
       await apiFetch(`/customers/${editRow.id}`, {
         method: "PUT",
         body: JSON.stringify({
+          newCustomerId: editForm.customerId,
           name: editForm.name,
           phone: editForm.phone,
           address: editForm.address,
@@ -231,43 +286,24 @@ export default function Customers() {
 
       <div className="admin-content">
         <h2 style={{ marginTop: 0 }}>Customers</h2>
-        <div className="actions print-hide">
-          <button className="btn ghost" onClick={() => navigate("/admin")}>Home</button>
-          <div ref={reportsMenuRef} style={{ position: "relative" }}>
-            <button className="btn ghost" onClick={() => setShowReportsMenu((v) => !v)}>Reports</button>
-            {showReportsMenu && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-                <button className="btn secondary" onClick={() => { setShowReportsMenu(false); navigate("/reports"); }}>Sales Reports</button>
-                <button className="btn secondary" onClick={() => { setShowReportsMenu(false); navigate("/reports/items"); }}>Item-wise Report</button>
-              </div>
-            )}
-          </div>
-          <button className="btn ghost" onClick={() => navigate("/returns")}>Returns</button>
-          <div ref={stockMenuRef} style={{ position: "relative" }}>
-            <button className="btn ghost" onClick={() => setShowStockMenu((v) => !v)}>Stock</button>
-            {showStockMenu && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-                <button className="btn secondary" onClick={() => { setShowStockMenu(false); navigate("/stock"); }}>Current Stock</button>
-                <button className="btn secondary" onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }}>Returned Stock</button>
-              </div>
-            )}
-          </div>
-          <button className="btn ghost" onClick={() => navigate("/customers")}>Customers</button>
-          <button className="btn secondary" onClick={() => navigate("/end-day")}>End Day</button>
-          <button className="btn ghost" onClick={() => navigate("/billing")}>Billing</button>
-          <button className="btn danger" onClick={doLogout}>Logout</button>
-        </div>
+        <TopNav onLogout={doLogout} />
 
         {msg && <div className="banner">{msg}</div>}
 
         <div className="panel">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <div>
               <h3 style={{ margin: 0 }}>Customer Table</h3>
               <span style={{ color: "var(--muted)", fontSize: 12 }}>Click headers to sort ascending/descending</span>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                placeholder="Search by ID, name, phone, address"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
               <button className="btn secondary print-hide" onClick={() => window.print()}>Print</button>
+              <button className="btn secondary print-hide" onClick={downloadCustomersCsv} disabled={loading}>Export CSV</button>
               <button className="btn secondary print-hide" onClick={() => customerImportInputRef.current?.click()} disabled={loading}>Import Customers</button>
               <input ref={customerImportInputRef} type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={handleImportCustomers} />
               <button className="btn secondary print-hide" onClick={loadCustomers} disabled={loading}>Refresh</button>
@@ -289,7 +325,7 @@ export default function Customers() {
             <tbody>
               {sortedRows.map((c) => (
                 <tr key={c.id}>
-                  <td>{formatNumber(c.id)}</td>
+                  <td>{c.id ?? "-"}</td>
                   <td>{c.name}</td>
                   <td>{c.phone || "-"}</td>
                   <td>{c.address || "-"}</td>
@@ -334,6 +370,8 @@ export default function Customers() {
         <div className="overlay" onClick={() => setEditRow(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Edit Customer</h3>
+            <label>Customer ID</label>
+            <input value={editForm.customerId} onChange={(e) => setEditForm((p) => ({ ...p, customerId: e.target.value }))} />
             <label>Name</label>
             <input value={editForm.name} onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))} />
             <label>Phone</label>
@@ -350,6 +388,8 @@ export default function Customers() {
     </div>
   );
 }
+
+
 
 
 

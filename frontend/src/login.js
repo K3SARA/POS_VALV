@@ -64,13 +64,13 @@ export default function Login({ onLogin }) {
         </div>
 
         <div className="login-card">
-          <form onSubmit={submit}>
+          <form onSubmit={submit} autoComplete="off">
             <div className="login-field">
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Username"
-                autoComplete="username"
+                autoComplete="off"
               />
             </div>
 
@@ -80,7 +80,7 @@ export default function Login({ onLogin }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Password"
-                autoComplete="current-password"
+                autoComplete="new-password"
               />
             </div>
 

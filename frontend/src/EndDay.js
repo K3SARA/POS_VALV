@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
+import TopNav from "./TopNav";
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -70,23 +71,8 @@ export default function EndDay() {
     <div className="page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <h2 style={{ margin: 0 }}>End Day (Daily Close)</h2>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button onClick={() => navigate("/admin")} style={{ padding: 10 }}>🏠 Home</button>
-          <button onClick={() => navigate("/reports")} style={{ padding: 10 }}>Reports</button>
-          <button onClick={() => navigate("/returns")} style={{ padding: 10 }}>Returns</button>
-          <div ref={stockMenuRef} style={{ position: "relative" }}>
-            <button onClick={() => setShowStockMenu((v) => !v)} style={{ padding: 10 }}>Stock</button>
-            {showStockMenu && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-                <button onClick={() => { setShowStockMenu(false); navigate("/stock"); }} style={{ padding: 8 }}>Current Stock</button>
-                <button onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }} style={{ padding: 8 }}>Returned Stock</button>
-              </div>
-            )}
-          </div>
-          <button onClick={() => navigate("/customers")} style={{ padding: 10 }}>Customers</button>
-          <button onClick={() => navigate("/end-day")} style={{ padding: 10 }}>End Day</button>
-          <button onClick={() => navigate("/billing")} style={{ padding: 10 }}>Billing</button>
-          <button onClick={doLogout} style={{ padding: 10, background: "#dc2626", color: "#fff", border: "1px solid #b91c1c", borderRadius: 6 }}>Logout</button>
+        <TopNav onLogout={doLogout} />
+        <div style={{ marginTop: 10 }}>
           <button onClick={load} disabled={loading} style={{ padding: 10 }}>Refresh</button>
         </div>
       </div>
@@ -147,3 +133,4 @@ export default function EndDay() {
     </div>
   );
 }
+

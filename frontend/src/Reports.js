@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, getRole } from "./api";
 import ReceiptPrint from "./ReceiptPrint";
+import TopNav from "./TopNav";
 import { formatNumber } from "./utils/format";
 import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
 
@@ -436,6 +437,7 @@ const closeEdit = () => {
 
   return (
     <div className={printStockOnly || printPanelId ? "page print-stock-mode" : "page"}>
+      <TopNav onLogout={doLogout} />
       <style>{`
         @media print {
           .print-stock-mode * { visibility: hidden !important; }
@@ -469,39 +471,6 @@ const closeEdit = () => {
           }
         }
       `}</style>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <h2 style={{ margin: 0 }}>Reports</h2>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => navigate("/admin")} style={{ padding: 10 }}>{"\uD83C\uDFE0"} Home</button>
-          <div ref={reportsMenuRef} style={{ position: "relative" }}>
-            <button onClick={() => setShowReportsMenu((v) => !v)} style={{ padding: 10 }}>Reports</button>
-            {showReportsMenu && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-                <button onClick={() => { setShowReportsMenu(false); navigate("/reports"); }} style={{ padding: 8 }}>Sales Reports</button>
-                <button onClick={() => { setShowReportsMenu(false); navigate("/reports/items"); }} style={{ padding: 8 }}>Item-wise Report</button>
-              </div>
-            )}
-          </div>
-          <button onClick={() => navigate("/returns")} style={{ padding: 10 }}>Returns</button>
-          <div ref={stockMenuRef} style={{ position: "relative" }}>
-            <button onClick={() => setShowStockMenu((v) => !v)} style={{ padding: 10 }}>Stock</button>
-            {showStockMenu && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-                <button onClick={() => { setShowStockMenu(false); navigate("/stock"); }} style={{ padding: 8 }}>Current Stock</button>
-                <button onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }} style={{ padding: 8 }}>Returned Stock</button>
-              </div>
-            )}
-          </div>
-          <button onClick={() => navigate("/customers")} style={{ padding: 10 }}>Customers</button>
-          <button onClick={() => navigate("/end-day")} style={{ padding: 10 }}>End Day</button>
-          <button onClick={() => navigate("/billing")} style={{ padding: 10 }}>Billing</button>
-          <button onClick={doLogout} style={{ padding: 10, background: "#dc2626", color: "#fff", border: "1px solid #b91c1c", borderRadius: 6 }}>Logout</button>
-          <button onClick={loadSales} disabled={loading} style={{ padding: 10 }}>
-            Refresh
-          </button>
-        </div>
-      </div>
-
       {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
 
       <div style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
@@ -538,7 +507,7 @@ const closeEdit = () => {
       </div>
 
       <div className={`print-panel-area ${printPanelId === "sales-list" ? "print-panel-area" : ""}`} style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "nowrap", marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, overflow: "visible", flexWrap: "nowrap", marginBottom: 8 }}>
           <h3 style={{ margin: 0, lineHeight: 1.1 }}>Sales List</h3>
           <div style={{ display: "flex", gap: 8, marginLeft: "-80px", marginRight:"25px" }}>
             <button onClick={() => handlePrintPanel("sales-list")} className="print-hide" style={{ padding: 8 }}>
@@ -675,200 +644,157 @@ const closeEdit = () => {
         )}
       </div>
 
-      <div className={`print-panel-area ${printPanelId === "customer-outstanding" ? "print-panel-area" : ""}`} style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <h3 style={{ marginTop: 0 }}>Customer Outstanding (Credit)</h3>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setShowOutstanding((v) => !v)} style={{ padding: 8 }}>
-              {showOutstanding ? "Hide" : "View"}
-            </button>
-            <button onClick={() => handlePrintPanel("customer-outstanding")} className="print-hide" style={{ padding: 8 }}>
-              Print
-            </button>
-            <button onClick={loadCustomerOutstanding} disabled={outstandingLoading} style={{ padding: 8 }}>
-              Refresh Outstanding
-            </button>
+
+      {showOutstanding && (
+        <div style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
+          {outstandingLoading ? (
+            <p style={{ color: "#666" }}>Loading outstanding...</p>
+          ) : (customerOutstanding || []).length === 0 ? (
+            <p style={{ color: "#666" }}>No credit outstanding.</p>
+          ) : (
+            <table border="1" cellPadding="8" style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead style={{ color: "#000" }}>
+                <tr>
+                  <th>Customer</th>
+                  <th>Phone</th>
+                  <th>Address</th>
+                  <th>Outstanding</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(customerOutstanding || []).map((c) => (
+                  <tr key={c.customerId}>
+                    <td>{c.name}</td>
+                    <td>{c.phone || "-"}</td>
+                    <td>{c.address || "-"}</td>
+                    <td>{c.outstanding}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {showCashSales && (
+        <div style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
+          <div style={{ lineHeight: 1.8, marginBottom: 10 }}>
+            <div>Bills count: <b>{cashTotals.billCount}</b></div>
+            <div>Total items sold: <b>{cashTotals.totalItems}</b></div>
+            <div>Total sales: <b>{cashTotals.totalSales}</b></div>
           </div>
-        </div>
-
-        {showOutstanding && (
-          <>
-            {outstandingLoading ? (
-              <p style={{ color: "#666" }}>Loading outstanding...</p>
-            ) : (customerOutstanding || []).length === 0 ? (
-              <p style={{ color: "#666" }}>No credit outstanding.</p>
-            ) : (
-              <table border="1" cellPadding="8" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead style={{ color: "#000" }}>
-                  <tr>
-                    <th>Customer</th>
-                    <th>Phone</th>
-                    <th>Address</th>
-                    <th>Outstanding</th>
+          {cashSales.length === 0 ? (
+            <p style={{ color: "#666" }}>No cash sales in this range.</p>
+          ) : (
+            <table border="1" cellPadding="8" style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead style={{ color: "#000" }}>
+                <tr>
+                  <th>Date</th>
+                  <th>Sale ID</th>
+                  <th>Customer name</th>
+                  <th>Phone</th>
+                  <th>Address</th>
+                  <th>Bill value</th>
+                  {role === "admin" && <th>Action</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {cashSales.map((s) => (
+                  <tr key={`cash-${s.id}`}>
+                    <td>{new Date(s.createdAt).toLocaleString()}</td>
+                    <td>{s.id}</td>
+                    <td>{s.customerName || s.customer?.name || "Walk-in"}</td>
+                    <td>{s.customerPhone || s.customer?.phone || "-"}</td>
+                    <td>{s.customerAddress || s.customer?.address || "-"}</td>
+                    <td>Rs {formatNumber(s.total)}</td>
+                    {role === "admin" && (
+                      <td style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <button onClick={() => openEdit(s.id)} style={{ padding: "6px 10px" }}>
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => deleteSale(s.id)}
+                          style={{
+                            padding: "6px 10px",
+                            background: "#fee2e2",
+                            color: "#991b1b",
+                            border: "1px solid #991b1b",
+                          }}
+                        >
+                          Delete
+                        </button>
+                        <button onClick={() => openView(s.id)} style={{ padding: "6px 10px", marginLeft: "auto" }}>
+                          View
+                        </button>
+                      </td>
+                    )}
                   </tr>
-                </thead>
-                <tbody>
-                  {(customerOutstanding || []).map((c) => (
-                    <tr key={c.customerId}>
-                      <td>{c.name}</td>
-                      <td>{c.phone || "-"}</td>
-                      <td>{c.address || "-"}</td>
-                      <td>{c.outstanding}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className={`print-panel-area ${printPanelId === "cash-sales" ? "print-panel-area" : ""}`} style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <h3 style={{ marginTop: 0 }}>Cash Sales Report</h3>
-          <button onClick={() => setShowCashSales((v) => !v)} style={{ padding: 8,marginright:"-150px" }}>
-            {showCashSales ? "Hide" : "View"}
-          </button>
-          <button onClick={() => handlePrintPanel("cash-sales")} className="print-hide" style={{ padding: 8, marginLeft:"-860px" }}>
-            Print
-          </button>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
-        {showCashSales && (
-          <>
-            <div style={{ lineHeight: 1.8, marginBottom: 10 }}>
-              <div>Bills count: <b>{cashTotals.billCount}</b></div>
-              <div>Total items sold: <b>{cashTotals.totalItems}</b></div>
-              <div>Total sales: <b>{cashTotals.totalSales}</b></div>
-            </div>
-            {cashSales.length === 0 ? (
-              <p style={{ color: "#666" }}>No cash sales in this range.</p>
-            ) : (
-              <table border="1" cellPadding="8" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead style={{ color: "#000" }}>
-                  <tr>
-                    <th>Date</th>
-                    <th>Sale ID</th>
-                    <th>Customer name</th>
-                    <th>Phone</th>
-                    <th>Address</th>
-                    <th>Bill value</th>
-                    {role === "admin" && <th>Action</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {cashSales.map((s) => (
-                    <tr key={`cash-${s.id}`}>
-                      <td>{new Date(s.createdAt).toLocaleString()}</td>
-                      <td>{s.id}</td>
-                      <td>{s.customerName || s.customer?.name || "Walk-in"}</td>
-                      <td>{s.customerPhone || s.customer?.phone || "-"}</td>
-                      <td>{s.customerAddress || s.customer?.address || "-"}</td>
-                      <td>Rs {formatNumber(s.total)}</td>
-                      {role === "admin" && (
-                        <td style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <button onClick={() => openEdit(s.id)} style={{ padding: "6px 10px" }}>
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => deleteSale(s.id)}
-                            style={{
-                              padding: "6px 10px",
-                              background: "#fee2e2",
-                              color: "#991b1b",
-                              border: "1px solid #991b1b",
-                            }}
-                          >
-                            Delete
-                          </button>
-                          <button onClick={() => openView(s.id)} style={{ padding: "6px 10px", marginLeft: "auto" }}>
-                            View
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </>
-        )}
-      </div>
+      )}
 
-      <div className={`print-panel-area ${printPanelId === "credit-sales" ? "print-panel-area" : ""}`} style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <h3 style={{ marginTop: 0 }}>Credit Sales Report</h3>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setShowCreditSales((v) => !v)} style={{ padding: 8 }}>
-              {showCreditSales ? "Hide" : "View"}
-            </button>
-            <button onClick={() => handlePrintPanel("credit-sales")} className="print-hide" style={{ padding: 8 }}>
-              Print
-            </button>
-            <button onClick={downloadCreditSalesCsv} className="print-hide" style={{ padding: 8 }}>
-              Export Excel
-            </button>
+      {showCreditSales && (
+        <div style={{ marginTop: 15, border: "1px solid #ddd", padding: 12, borderRadius: 10 }}>
+          <div style={{ lineHeight: 1.8, marginBottom: 10 }}>
+            <div>Bills count: <b>{creditTotals.billCount}</b></div>
+            <div>Total items sold: <b>{creditTotals.totalItems}</b></div>
+            <div>Total sales: <b>{creditTotals.totalSales}</b></div>
           </div>
-        </div>
-        {showCreditSales && (
-          <>
-            <div style={{ lineHeight: 1.8, marginBottom: 10 }}>
-              <div>Bills count: <b>{creditTotals.billCount}</b></div>
-              <div>Total items sold: <b>{creditTotals.totalItems}</b></div>
-              <div>Total sales: <b>{creditTotals.totalSales}</b></div>
-            </div>
-            {creditSales.length === 0 ? (
-              <p style={{ color: "#666" }}>No credit sales in this range.</p>
-            ) : (
-              <table border="1" cellPadding="8" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead style={{ color: "#000" }}>
-                  <tr>
-                    <th>Date</th>
-                    <th>Sale ID</th>
-                    <th>Customer name</th>
-                    <th>Phone</th>
-                    <th>Address</th>
-                    <th>Bill value</th>
-                    {role === "admin" && <th>Action</th>}
+          {creditSales.length === 0 ? (
+            <p style={{ color: "#666" }}>No credit sales in this range.</p>
+          ) : (
+            <table border="1" cellPadding="8" style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead style={{ color: "#000" }}>
+                <tr>
+                  <th>Date</th>
+                  <th>Sale ID</th>
+                  <th>Customer name</th>
+                  <th>Phone</th>
+                  <th>Address</th>
+                  <th>Bill value</th>
+                  {role === "admin" && <th>Action</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {creditSales.map((s) => (
+                  <tr key={`credit-${s.id}`}>
+                    <td>{new Date(s.createdAt).toLocaleString()}</td>
+                    <td>{s.id}</td>
+                    <td>{s.customerName || s.customer?.name || "Walk-in"}</td>
+                    <td>{s.customerPhone || s.customer?.phone || "-"}</td>
+                    <td>{s.customerAddress || s.customer?.address || "-"}</td>
+                    <td>Rs {formatNumber(s.total)}</td>
+                    {role === "admin" && (
+                      <td style={{ display: "flex", gap: 6 }}>
+                        <button onClick={() => openEdit(s.id)} style={{ padding: "6px 10px" }}>
+                          Edit
+                        </button>
+                        <button onClick={() => openView(s.id)} style={{ padding: "6px 10px" }}>
+                          View
+                        </button>
+                        <button
+                          onClick={() => deleteSale(s.id)}
+                          style={{
+                            padding: "6px 10px",
+                            background: "#fee2e2",
+                            color: "#991b1b",
+                            border: "1px solid #991b1b",
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    )}
                   </tr>
-                </thead>
-                <tbody>
-                  {creditSales.map((s) => (
-                    <tr key={`credit-${s.id}`}>
-                      <td>{new Date(s.createdAt).toLocaleString()}</td>
-                      <td>{s.id}</td>
-                      <td>{s.customerName || s.customer?.name || "Walk-in"}</td>
-                      <td>{s.customerPhone || s.customer?.phone || "-"}</td>
-                      <td>{s.customerAddress || s.customer?.address || "-"}</td>
-                      <td>Rs {formatNumber(s.total)}</td>
-                      {role === "admin" && (
-                        <td style={{ display: "flex", gap: 6 }}>
-                          <button onClick={() => openEdit(s.id)} style={{ padding: "6px 10px" }}>
-                            Edit
-                          </button>
-                          <button onClick={() => openView(s.id)} style={{ padding: "6px 10px" }}>
-                            View
-                          </button>
-                          <button
-                            onClick={() => deleteSale(s.id)}
-                            style={{
-                              padding: "6px 10px",
-                              background: "#fee2e2",
-                              color: "#991b1b",
-                              border: "1px solid #991b1b",
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </>
-        )}
-      </div>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
       {viewOpen && (
         <div
           style={{
@@ -1136,6 +1062,10 @@ const closeEdit = () => {
     </div>
   );
 }
+
+
+
+
 
 
 

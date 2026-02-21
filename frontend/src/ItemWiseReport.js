@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./api";
 import { formatNumber } from "./utils/format";
 import { useNavigate } from "react-router-dom";
+import TopNav from "./TopNav";
 
 
 function toDateInputValue(d) {
@@ -67,62 +68,8 @@ export default function ItemWiseReport() {
 
   return (
     <div style={{ padding: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0 }}>Item-wise Report</h2>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="btn ghost" type="button" onClick={() => navigate("/admin")}>
-            Home
-          </button>
-          <div ref={reportsMenuRef} style={{ position: "relative" }}>
-            <button className="btn ghost" type="button" onClick={() => setShowReportsMenu((v) => !v)}>
-              Reports
-            </button>
-            {showReportsMenu && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-                <button className="btn secondary" type="button" onClick={() => { setShowReportsMenu(false); navigate("/reports"); }}>
-                  Sales Reports
-                </button>
-                <button className="btn secondary" type="button" onClick={() => { setShowReportsMenu(false); navigate("/reports/items"); }}>
-                  Item-wise Report
-                </button>
-              </div>
-            )}
-          </div>
-          <button className="btn ghost" type="button" onClick={() => navigate("/returns")}>
-            Returns
-          </button>
-          <div ref={stockMenuRef} style={{ position: "relative" }}>
-            <button className="btn ghost" type="button" onClick={() => setShowStockMenu((v) => !v)}>
-              Stock
-            </button>
-            {showStockMenu && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-                <button className="btn secondary" type="button" onClick={() => { setShowStockMenu(false); navigate("/stock"); }}>
-                  Current Stock
-                </button>
-                <button className="btn secondary" type="button" onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }}>
-                  Returned Stock
-                </button>
-              </div>
-            )}
-          </div>
-          <button className="btn ghost" type="button" onClick={() => navigate("/customers")}>
-            Customers
-          </button>
-          <button className="btn secondary" type="button" onClick={() => navigate("/end-day")}>
-            End Day
-          </button>
-          <button className="btn ghost" type="button" onClick={() => navigate("/billing")}>
-            Billing
-          </button>
-          <button className="btn" type="button" onClick={doLogout} style={{ background: "#dc2626", color: "#fff", border: "1px solid #b91c1c" }}>
-            Logout
-          </button>
-          <button className="btn secondary" type="button" onClick={load} disabled={loading}>
-            Refresh
-          </button>
-        </div>
-      </div>
+      <TopNav onLogout={doLogout} />
+      <h2 style={{ marginTop: 12 }}>Item-wise Report</h2>
 
       <div className="panel" style={{ marginTop: 12, padding: 14 }}>
         <h3 style={{ marginTop: 0 }}>Date Range</h3>
@@ -188,5 +135,7 @@ export default function ItemWiseReport() {
     </div>
   );
 }
+
+
 
 

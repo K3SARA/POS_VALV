@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import TopNav from "./TopNav";
 import { apiFetch } from "./api";
 import { formatNumber } from "./utils/format";
 
@@ -168,16 +169,7 @@ export default function ReturnedStock() {
             <h2>Returned Stock</h2>
             <span>Items returned from sales</span>
           </div>
-          <div className="actions">
-            <button className="btn ghost" onClick={() => navigate("/admin")}>{"\uD83C\uDFE0"} Home</button>
-            <button className="btn ghost" onClick={() => navigate("/reports")}>Reports</button>
-            <button className="btn ghost" onClick={() => navigate("/returns")}>Returns</button>
-            <button className="btn ghost" onClick={() => navigate("/stock")}>Stock</button>
-            <button className="btn ghost" onClick={() => navigate("/customers")}>Customers</button>
-            <button className="btn secondary" onClick={() => navigate("/end-day")}>End Day</button>
-            <button className="btn ghost" onClick={() => navigate("/billing")}>Billing</button>
-            <button className="btn danger" onClick={doLogout}>Logout</button>
-          </div>
+          <TopNav onLogout={doLogout} />
         </div>
 
         {msg && <div className="banner">{msg}</div>}
@@ -235,5 +227,6 @@ export default function ReturnedStock() {
     </div>
   );
 }
+
 
 

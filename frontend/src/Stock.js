@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import TopNav from "./TopNav";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "./api";
 import { formatNumber } from "./utils/format";
@@ -66,6 +67,12 @@ export default function Stock() {
 
     let created = 0, updated = 0, skipped = 0, failed = 0;
 
+    const normalizePm = (v) => {
+      const raw = String(v ?? "").trim().toLowerCase();
+      if (raw === "cash" || raw === "credit" || raw === "cheque") return raw;
+      return "";
+    };
+
     for (const row of parsed) {
       const barcode = String(row.barcode || row.code || "").trim();
       const name = String(row.name || row.productname || "").trim();
@@ -75,6 +82,36 @@ export default function Stock() {
         let existing = null;
         try { existing = await apiFetch(`/products/${encodeURIComponent(barcode)}`); } catch {}
 
+        const supplierName =
+          String(
+            row.suppliername ??
+            row.supplier_name ??
+            row.supplier ??
+            row.suppliercompany ??
+            ""
+          ).trim();
+        const supplierInvoiceNo =
+          String(
+            row.supplierinvoiceno ??
+            row.supplier_invoice_no ??
+            row.supplierinvoice ??
+            row.invoiceno ??
+            ""
+          ).trim();
+        const supplierPaymentMethod = normalizePm(
+          row.supplierpaymentmethod ??
+          row.paymentmethod ??
+          row.payment ??
+          row.supplierpayment ??
+          ""
+        );
+        const receivedDate = String(
+          row.receiveddate ??
+          row.received_date ??
+          row.date ??
+          ""
+        ).trim();
+
         const invoicePrice = toNum(row.invoicePrice ?? row.invoiceprice, Number(existing?.invoicePrice || 0));
         const billingPrice = toNum(row.billingPrice ?? row.billingprice ?? row.price, Number(existing?.price || 0));
         const stockValue = toNum(row.stock, Number(existing?.stock || 0));
@@ -82,15 +119,35 @@ export default function Stock() {
         if (!safeName) { skipped += 1; continue; }
 
         if (existing) {
+          const updateBody = {
+            name: safeName,
+            invoicePrice,
+            billingPrice,
+            stock: stockValue,
+            ...(supplierName ? { supplierName } : {}),
+            ...(supplierInvoiceNo ? { supplierInvoiceNo } : {}),
+            ...(supplierPaymentMethod ? { supplierPaymentMethod } : {}),
+            ...(receivedDate ? { receivedDate } : {}),
+          };
           await apiFetch(`/products/${encodeURIComponent(barcode)}`, {
             method: "PUT",
-            body: JSON.stringify({ name: safeName, invoicePrice, billingPrice, stock: stockValue }),
+            body: JSON.stringify(updateBody),
           });
           updated += 1;
         } else {
           await apiFetch("/products", {
             method: "POST",
-            body: JSON.stringify({ barcode, name: safeName, invoicePrice, billingPrice, stock: stockValue }),
+            body: JSON.stringify({
+              barcode,
+              name: safeName,
+              invoicePrice,
+              billingPrice,
+              stock: stockValue,
+              ...(supplierName ? { supplierName } : {}),
+              ...(supplierInvoiceNo ? { supplierInvoiceNo } : {}),
+              ...(supplierPaymentMethod ? { supplierPaymentMethod } : {}),
+              ...(receivedDate ? { receivedDate } : {}),
+            }),
           });
           created += 1;
         }
@@ -377,44 +434,8 @@ export default function Stock() {
 
             <span>Search, edit, and delete items</span>
           </div>
-          <div className="actions">
-            <button className="btn ghost" onClick={() => navigate(isAdmin ? "/admin" : "/cashier")}>Home</button>
-            <div className="menu-wrap" ref={reportsMenuRef}>
-              <button className="btn ghost" onClick={() => setShowReportsMenu((v) => !v)}>Reports</button>
-              {showReportsMenu && (
-                <div className="menu-panel">
-                  <button className="btn secondary" onClick={() => { setShowReportsMenu(false); navigate("/reports"); }}>
-                    Sales Reports
-                  </button>
-                  <button className="btn secondary" onClick={() => { setShowReportsMenu(false); navigate("/reports/items"); }}>
-                    Item-wise Report
-                  </button>
-                </div>
-              )}
-            </div>
-            <button className="btn ghost" onClick={() => navigate("/returns")}>Returns</button>
-            <div className="menu-wrap" ref={stockMenuRef}>
-              <button className="btn ghost" onClick={() => setShowStockMenu((v) => !v)}>Stock</button>
-              {showStockMenu && (
-                <div className="menu-panel">
-                  <button className="btn secondary" onClick={() => { setShowStockMenu(false); navigate("/stock"); }}>
-                    Current Stock
-                  </button>
-                  <button className="btn secondary" onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }}>
-                    Returned Stock
-                  </button>
-                </div>
-              )}
-            </div>
-            {isAdmin && <button className="btn ghost" onClick={() => navigate("/customers")}>Customers</button>}
-            {isAdmin && <button className="btn secondary" onClick={() => navigate("/end-day")}>End Day</button>}
-            {isAdmin && <button className="btn ghost" onClick={() => navigate("/billing")}>Billing</button>}
-            <button className="btn danger" onClick={doLogout}>Logout</button>
-            {isAdmin && <button className="btn add-stock" onClick={() => setShowAddStock(true)}>Add Stock</button>}
-            
-            <button className="btn secondary" onClick={() => window.print()}>Print</button>
+          <TopNav onLogout={doLogout} />
           </div>
-        </div>
 
         {msg && <div className="banner">{msg}</div>}
 
@@ -540,7 +561,7 @@ export default function Stock() {
               <h3 style={{ margin: 0 }}>Add Stock</h3>
               <button className="btn ghost" type="button" onClick={() => setShowAddStock(false)}>Close</button>
             </div>
-            <form className="form" onSubmit={createProduct}>
+            <form className="form" onSubmit={createProduct} autoComplete="off">
               <div className="form-grid-2">
                 <div className="input-group"><input aria-label="Barcode" placeholder="Barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} required /></div>
                 <div className="input-group"><input aria-label="Name" placeholder="Product name" value={name} onChange={(e) => setName(e.target.value)} required /></div>
@@ -585,6 +606,8 @@ export default function Stock() {
     </div>
   );
 }
+
+
 
 
 

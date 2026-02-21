@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
+import TopNav from "./TopNav";
 import ReceiptPrint from "./ReceiptPrint";
 import { formatNumber } from "./utils/format";
 import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
@@ -68,18 +69,12 @@ export default function SalesHistory() {
 
   return (
     <div className="page">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0 }}>???? Sales History</h2>
+      <TopNav />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+        <h2 style={{ margin: 0 }}>Sales History</h2>
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => navigate("/admin")} style={{ padding: 10 }}>
-            ???????? Home
-          </button>
-          <button onClick={() => navigate(-1)} style={{ padding: 10 }}>
-            Back
-          </button>
-          <button onClick={loadSales} disabled={loading} style={{ padding: 10 }}>
-            Refresh
-          </button>
+          <button onClick={() => navigate(-1)} style={{ padding: 10 }}>Back</button>
+          <button onClick={loadSales} disabled={loading} style={{ padding: 10 }}>Refresh</button>
         </div>
       </div>
 
@@ -284,6 +279,7 @@ export default function SalesHistory() {
     </div>
   );
 }
+
 
 
 

@@ -8,8 +8,7 @@ import Returns from "./Returns";
 import SalesHistory from "./SalesHistory";
 import Reports from "./Reports";
 import EndDay from "./EndDay";
-import ItemWiseReport from "./ItemWiseReport";
-import CustomerWiseReport from "./CustomerWiseReport";
+import ItemWiseReport from "./ItemWiseReport";\nimport CustomerWiseReport from "./CustomerWiseReport";
 import Stock from "./Stock";
 import ReturnedStock from "./ReturnedStock";
 import Customers from "./Customers";
@@ -71,8 +70,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/history" element={<SalesHistory />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route
+        <Route path="/reports" element={<Reports />} />`n        <Route
           path="/reports/items"
           element={
             <PrivateRoute allow="admin">
@@ -166,6 +164,7 @@ export default function App() {
     </BrowserRouter>
   );
 }
+
 
 
 

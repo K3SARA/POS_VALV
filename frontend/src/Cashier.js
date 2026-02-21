@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./api";
 import { useNavigate } from "react-router-dom";
+import TopNav from "./TopNav";
 import ReceiptPrint from "./ReceiptPrint";
 import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
 
@@ -62,6 +63,7 @@ export default function Cashier({ onLogout }) {
 
   // Customer (required)
   const customerEnabled = true;
+  const [customerId, setCustomerId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -73,36 +75,28 @@ export default function Cashier({ onLogout }) {
   const [allCustomers, setAllCustomers] = useState([]);
 
   const loadAllCustomers = async () => {
-    try {
-      setCustomerLoading(true);
-      const data = await apiFetch("/customers");
-      const list = Array.isArray(data) ? data : [];
-      setAllCustomers(list);
-      setCustomerResults(list);
-    } catch (e) {
-      setAllCustomers([]);
-      setCustomerResults([]);
-    } finally {
-      setCustomerLoading(false);
-    }
+    // keep for backward compatibility; dropdown now queries by text
+    return;
   };
 
   const filterCustomers = (text) => {
     const q = String(text || "").trim().toLowerCase();
     if (!q) {
-      setCustomerResults(allCustomers);
+      setCustomerResults([]);
       return;
     }
-    const filtered = allCustomers.filter((c) => {
-      const name = String(c.name || "").toLowerCase();
-      const phone = String(c.phone || "").toLowerCase();
-      const address = String(c.address || "").toLowerCase();
-      return name.includes(q) || phone.includes(q) || address.includes(q);
-    });
-    setCustomerResults(filtered);
+    setCustomerLoading(true);
+    apiFetch(`/customers?q=${encodeURIComponent(q)}`)
+      .then((data) => {
+        const list = Array.isArray(data) ? data : [];
+        setCustomerResults(list);
+      })
+      .catch(() => setCustomerResults([]))
+      .finally(() => setCustomerLoading(false));
   };
 
   const chooseCustomer = (c) => {
+    setCustomerId(c.id || "");
     setCustomerName(c.name || "");
     setCustomerPhone(c.phone || "");
     setCustomerAddress(c.address || "");
@@ -149,37 +143,30 @@ export default function Cashier({ onLogout }) {
   const [allItems, setAllItems] = useState([]);
 
   const loadAllItems = async () => {
-    try {
-      setItemLoading(true);
-      const data = await apiFetch("/products");
-      const list = Array.isArray(data) ? data : (data?.items || []);
-      const inStockList = list.filter((p) => Number(p?.stock || 0) > 0);
-      setAllItems(list);
-      setItemResults(inStockList);
-      setShowItemDropdown(true);
-    } catch (e) {
-      setAllItems([]);
-      setItemResults([]);
-      setShowItemDropdown(false);
-    } finally {
-      setItemLoading(false);
-    }
+    return;
   };
 
   const filterItems = (text) => {
     const q = String(text || "").trim().toLowerCase();
     if (!q) {
-      setItemResults(allItems.filter((p) => getRemainingStockForDisplay(p.barcode) > 0));
-      setShowItemDropdown(true);
+      setItemResults([]);
+      setShowItemDropdown(false);
       return;
     }
-    const filtered = allItems.filter((p) => {
-      const name = String(p.name || "").toLowerCase();
-      const barcodeText = String(p.barcode || "").toLowerCase();
-      return (name.includes(q) || barcodeText.includes(q)) && getRemainingStockForDisplay(p.barcode) > 0;
-    });
-    setItemResults(filtered);
-    setShowItemDropdown(true);
+    setItemLoading(true);
+    apiFetch(`/products/search?q=${encodeURIComponent(q)}`)
+      .then((data) => {
+        const list = Array.isArray(data) ? data : (data?.items || []);
+        setAllItems(list);
+        const filtered = list.filter((p) => getRemainingStockForDisplay(p.barcode) > 0);
+        setItemResults(filtered);
+        setShowItemDropdown(true);
+      })
+      .catch(() => {
+        setItemResults([]);
+        setShowItemDropdown(false);
+      })
+      .finally(() => setItemLoading(false));
   };
 
   const chooseItem = (p) => {
@@ -200,7 +187,10 @@ export default function Cashier({ onLogout }) {
     cart.reduce((sum, i) => (i.barcode === code && !i.freeIssue ? sum + Number(i.qty || 0) : sum), 0);
 
   const getStockForBarcode = (code) => {
-    const item = allItems.find((p) => p.barcode === code) || cart.find((p) => p.barcode === code);
+    const item =
+      allItems.find((p) => p.barcode === code) ||
+      itemResults.find((p) => p.barcode === code) ||
+      cart.find((p) => p.barcode === code);
     const stock = Number(item?.stock ?? 0);
     return Number.isFinite(stock) ? stock : 0;
   };
@@ -510,6 +500,7 @@ export default function Cashier({ onLogout }) {
     setCustomerName("");
     setCustomerPhone("");
     setCustomerAddress("");
+    setCustomerId("");
 
     setDiscountType("none");
     setDiscountValue("");
@@ -527,6 +518,7 @@ export default function Cashier({ onLogout }) {
         name: draftName.trim() || null,
         cart,
         customerEnabled,
+        customerId,
         customerName,
         customerPhone,
         customerAddress,
@@ -560,6 +552,7 @@ export default function Cashier({ onLogout }) {
       const d = draft?.data || {};
 
       setCart(Array.isArray(d.cart) ? d.cart : []);
+      setCustomerId(d.customerId || "");
       setCustomerName(d.customerName || "");
       setCustomerPhone(d.customerPhone || "");
       setCustomerAddress(d.customerAddress || "");
@@ -711,10 +704,18 @@ export default function Cashier({ onLogout }) {
 
       setMsg("Sale completed!");
       const saleId =
-        sale?.id || sale?.saleId || sale?._id || sale?.invoiceNo || sale?.billNo || "";
+        sale?.sale?.id ||
+        sale?.id ||
+        sale?.saleId ||
+        sale?.sale?.saleId ||
+        sale?._id ||
+        sale?.invoiceNo ||
+        sale?.billNo ||
+        "";
       openPrintPreview({
         saleId,
-        dateText: new Date().toLocaleString(),
+        dateText: sale?.sale?.createdAt ? new Date(sale.sale.createdAt).toLocaleString() : new Date().toLocaleString(),
+        customerId: sale?.sale?.customerId || customerId || "",
         items: cartSnapshot,
         subtotal: subtotalSnapshot,
         discount: discountSnapshot,
@@ -751,72 +752,7 @@ export default function Cashier({ onLogout }) {
 
       </div>
 
-      <button onClick={() => navigate("/admin")} style={{ padding: 10, fontSize: 16 }}>
-        {"\uD83C\uDFE0"} Home
-      </button>
-      <button onClick={() => navigate("/reports")} style={{ padding: 10, fontSize: 16 }}>
-        Sales History
-      </button>
-      <div ref={reportsMenuRef} style={{ position: "relative", display: "inline-block" }}>
-        <button onClick={() => setShowReportsMenu((v) => !v)} style={{ padding: 10, fontSize: 16 }}>
-          Reports
-        </button>
-        {showReportsMenu && (
-          <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-            <button onClick={() => { setShowReportsMenu(false); navigate("/reports"); }} style={{ padding: 8, fontSize: 14 }}>
-              Sales Reports
-            </button>
-            <button onClick={() => { setShowReportsMenu(false); navigate("/reports/items"); }} style={{ padding: 8, fontSize: 14 }}>
-              Item-wise Report
-            </button>
-          </div>
-        )}
-      </div>
-      <button onClick={() => navigate("/end-day")} style={{ padding: 10, fontSize: 16 }}>
-        End Day
-      </button>
-      <button onClick={() => navigate("/returns")} style={{ padding: 10, fontSize: 16 }}>
-        Returns
-      </button>
-      {role !== "admin" && (
-        <div ref={stockMenuRef} style={{ position: "relative", display: "inline-block" }}>
-          <button onClick={() => setShowStockMenu((v) => !v)} style={{ padding: 10, fontSize: 16 }}>
-            Stock
-          </button>
-          {showStockMenu && (
-            <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-              <button onClick={() => { setShowStockMenu(false); navigate("/stock"); }} style={{ padding: 8, fontSize: 14 }}>
-                Current Stock
-              </button>
-              <button onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }} style={{ padding: 8, fontSize: 14 }}>
-                Returned Stock
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      {role === "admin" && (
-        <>
-          <div ref={stockMenuRef} style={{ position: "relative", display: "inline-block" }}>
-            <button onClick={() => setShowStockMenu((v) => !v)} style={{ padding: 10, fontSize: 16 }}>
-              Stock
-            </button>
-            {showStockMenu && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, display: "grid", gap: 6, padding: 8, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 10, zIndex: 50, minWidth: 170 }}>
-                <button onClick={() => { setShowStockMenu(false); navigate("/stock"); }} style={{ padding: 8, fontSize: 14 }}>
-                  Current Stock
-                </button>
-                <button onClick={() => { setShowStockMenu(false); navigate("/stock/returned"); }} style={{ padding: 8, fontSize: 14 }}>
-                  Returned Stock
-                </button>
-              </div>
-            )}
-          </div>
-          <button onClick={() => navigate("/customers")} style={{ padding: 10, fontSize: 16 }}>
-            Customers
-          </button>
-        </>
-      )}
+      <TopNav onLogout={onLogout} />
 
       {requiresStartDay && (
         <div
@@ -946,15 +882,16 @@ export default function Cashier({ onLogout }) {
               onChange={(e) => {
                 const v = e.target.value.replace(/[^A-Za-z\s]/g, "");
                 setCustomerName(v);
+                setCustomerId("");
                 setShowCustomerDropdown(true);
                 filterCustomers(v);
               }}
               onFocus={() => {
-                setShowCustomerDropdown(true);
                 if (allCustomers.length === 0) {
                   loadAllCustomers();
-                } else {
+                } else if (customerName.trim()) {
                   filterCustomers(customerName);
+                  setShowCustomerDropdown(true);
                 }
               }}
               onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 150)}
@@ -1015,11 +952,7 @@ export default function Cashier({ onLogout }) {
                 onChange={(e) => {
                   const v = e.target.value;
                   setBarcode(v);
-                  if (allItems.length === 0) {
-                    loadAllItems();
-                  } else {
-                    filterItems(v);
-                  }
+                  filterItems(v);
                 }}
                 placeholder="Scan / Enter Barcode"
                 style={{ padding: 10, width: 260 }}
@@ -1030,9 +963,7 @@ export default function Cashier({ onLogout }) {
                   }
                 }}
                 onFocus={() => {
-                  if (allItems.length === 0) {
-                    loadAllItems();
-                  } else {
+                  if (barcode.trim()) {
                     filterItems(barcode);
                   }
                 }}
@@ -1448,6 +1379,7 @@ export default function Cashier({ onLogout }) {
                   layoutMode={printLayoutMode}
                   saleId={printPayload?.saleId || ""}
                   dateText={printPayload?.dateText || ""}
+                  customerId={printPayload?.customerId || ""}
                   customerName={printPayload?.customerName || ""}
                 customerPhone={printPayload?.customerPhone || ""}
                 customerAddress={printPayload?.customerAddress || ""}
@@ -1586,6 +1518,8 @@ export default function Cashier({ onLogout }) {
     </div>
   );
 }
+
+
 
 
 
