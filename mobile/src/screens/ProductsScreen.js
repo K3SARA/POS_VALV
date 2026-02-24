@@ -15,6 +15,7 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { formatNumber } from "../utils/format";
@@ -139,6 +140,12 @@ export default function ProductsScreen() {
   React.useEffect(() => {
     loadProducts();
   }, [loadProducts]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadProducts();
+    }, [loadProducts])
+  );
 
   function resetProductForm() {
     setBarcode("");

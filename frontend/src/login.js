@@ -100,7 +100,7 @@ export default function Login({ onLogin }) {
 
         <div className="login-powered">
           Powered by{" "}
-          <a href="https://jncosoftwaresolutions.pages.dev/" target="_blank" rel="noreferrer">
+          <a href="https://jnco.up.railway.app/" target="_blank" rel="noreferrer">
             J&co.
           </a>
         </div>

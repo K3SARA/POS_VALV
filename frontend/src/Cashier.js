@@ -28,7 +28,7 @@ export default function Cashier({ onLogout }) {
   const DEFAULT_BILL_LAYOUT = {
     companyName: "Apex Logistics",
     headerText: "Aluviharaya, Matale\nMobile: +94770654279\nThank you! Visit again",
-    footerText: "Powered by POS",
+    footerText: "Powered by J&co.",
     showItemsHeading: true,
     showCustomer: true,
     showTotals: true,

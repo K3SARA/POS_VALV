@@ -611,10 +611,10 @@ app.get("/customers", auth, async (req, res) => {
   try {
     const args: Prisma.CustomerFindManyArgs = {
       orderBy: { id: "desc" },
-      take: 100,
     };
 
     if (q) {
+      args.take = 100;
       args.where = {
         OR: [
           { id: { contains: q, mode: "insensitive" } },

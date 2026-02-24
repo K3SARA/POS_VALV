@@ -50,8 +50,12 @@ function upsertOutstanding(notes, value) {
 function buildReceiptText(receipt) {
   if (!receipt) return "";
   const lines = [
-    "POS RECEIPT",
+    "APEX LOGISTICS",
+    "--------------------------",
     `Date: ${receipt.date}`,
+    "--------------------------",
+    `Sale ID: ${receipt.saleId || "-"}`,
+    `Customer ID: ${receipt.customerId || "-"}`,
     `Customer: ${receipt.customerName || "-"}`,
     `Payment: ${receipt.paymentMethod}`,
     "------------------------",
@@ -67,7 +71,7 @@ function buildReceiptText(receipt) {
     }
   });
   lines.push("------------------------");
-  lines.push(`Subtotal: ${formatNumber(receipt.subtotal)}`);
+  lines.push(`SUBTOTAL: ${formatNumber(receipt.subtotal)}`);
   lines.push(`Discount: ${formatNumber(receipt.discount)}`);
   lines.push(`Bill Total: ${formatNumber(receipt.total)}`);
   lines.push(`Cash Received: ${formatNumber(receipt.cashReceived)}`);
@@ -531,6 +535,7 @@ export default function CashierScreen() {
 
       setLastReceipt({
         saleId: saleResponse?.sale?.id || "",
+        customerId: saleResponse?.sale?.customerId || selectedCustomerId || "",
         date: new Date().toLocaleString(),
         items: cart,
         subtotal,
@@ -546,7 +551,6 @@ export default function CashierScreen() {
 
       setCart([]);
       setBarcode("");
-      setQuery("");
       setCustomerName("");
       setCustomerPhone("");
       setCustomerAddress("");
@@ -887,7 +891,7 @@ export default function CashierScreen() {
             ))}
           </View>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { marginTop: 8 }]}
             value={discountValue}
             onChangeText={setDiscountValue}
             editable={discountType !== "none" && canUseCashierActions}
