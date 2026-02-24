@@ -12,6 +12,7 @@ function todayDateInput() {
 }
 
 export default function CashierDayLogsScreen() {
+  const placeholderColor = "#6b7280";
   const [fromDate, setFromDate] = useState(todayDateInput());
   const [toDate, setToDate] = useState(todayDateInput());
   const [rows, setRows] = useState([]);
@@ -47,11 +48,23 @@ export default function CashierDayLogsScreen() {
       <View style={styles.filterRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.meta}>From (YYYY-MM-DD)</Text>
-          <TextInput style={styles.input} value={fromDate} onChangeText={setFromDate} />
+          <TextInput
+            style={styles.input}
+            value={fromDate}
+            onChangeText={setFromDate}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={placeholderColor}
+          />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.meta}>To (YYYY-MM-DD)</Text>
-          <TextInput style={styles.input} value={toDate} onChangeText={setToDate} />
+          <TextInput
+            style={styles.input}
+            value={toDate}
+            onChangeText={setToDate}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={placeholderColor}
+          />
         </View>
       </View>
 
@@ -98,6 +111,7 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: "#fff",
+    color: "#111827",
     borderColor: "#d1d5db",
     borderWidth: 1,
     borderRadius: 8,

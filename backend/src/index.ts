@@ -1014,7 +1014,7 @@ app.delete("/customers/:id", auth, requireAnyRole("admin", "cashier"), async (re
 
 // Create a sale (cashier/admin)
 app.post("/sales", auth, async (req: AuthedRequest, res) => {
-  const { items, customer, paymentMethod, discountType, discountValue, cashReceived } = req.body || {};
+  const { items, customer, paymentMethod, discountType, discountValue, cashReceived, chequeDate } = req.body || {};
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "No items provided" });
@@ -1072,6 +1072,10 @@ app.post("/sales", auth, async (req: AuthedRequest, res) => {
         pmRaw === "cash" || pmRaw === "card" || pmRaw === "credit" || pmRaw === "check"
           ? pmRaw
           : "cash";
+      const safeChequeDate = String(chequeDate || "").trim();
+      if (pm === "check" && !/^\d{4}-\d{2}-\d{2}$/.test(safeChequeDate)) {
+        throw new Error("Cheque date is required (YYYY-MM-DD)");
+      }
 
       const dtRaw = String(discountType || "none").toLowerCase();
       const dt = dtRaw === "amount" || dtRaw === "percent" || dtRaw === "none" ? dtRaw : "none";
@@ -1189,7 +1193,7 @@ app.post("/sales", auth, async (req: AuthedRequest, res) => {
         finalOutstanding = 0;
       }
 
-      return tx.sale.update({
+      const finalSale = await tx.sale.update({
         where: { id: newSale.id },
         data: {
           total: new Prisma.Decimal(finalTotal),
@@ -1199,6 +1203,26 @@ app.post("/sales", auth, async (req: AuthedRequest, res) => {
           discountValue: new Prisma.Decimal(safeDv),
         },
       });
+
+      if (pm === "check" && customerId && safeChequeDate) {
+        const customerRow = await tx.customer.findUnique({ where: { id: customerId } });
+        if (customerRow) {
+          const marker = `CHEQUE_DUE:${safeChequeDate}|SALE:${newSale.id}`;
+          const lines = String(customerRow.notes || "")
+            .split("\n")
+            .map((v) => v.trim())
+            .filter(Boolean);
+          if (!lines.includes(marker)) {
+            lines.push(marker);
+            await tx.customer.update({
+              where: { id: customerId },
+              data: { notes: lines.join("\n") },
+            });
+          }
+        }
+      }
+
+      return finalSale;
     }, { timeout: 20000, maxWait: 10000 });
 
     return res.status(201).json({ message: "Sale completed", sale });

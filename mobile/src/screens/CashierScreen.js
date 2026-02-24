@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -12,11 +13,14 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { formatNumber } from "../utils/format";
 
 const OUT_PREFIX = "OUTSTANDING:";
+const CHEQUE_DUE_PREFIX = "CHEQUE_DUE:";
 
 function normalizeBarcode(value) {
   return String(value || "")
@@ -37,6 +41,33 @@ function parseOutstanding(notes) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
+function parseChequeDueDates(notes) {
+  const text = String(notes || "");
+  return text
+    .split("\n")
+    .map((v) => v.trim())
+    .filter((v) => v.toUpperCase().startsWith(CHEQUE_DUE_PREFIX))
+    .map((line) => line.slice(CHEQUE_DUE_PREFIX.length).trim().split("|")[0]?.trim())
+    .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")));
+}
+
+function daysUntilDate(dateText) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateText || ""))) return null;
+  const [y, m, d] = String(dateText).split("-").map(Number);
+  const target = new Date(y, (m || 1) - 1, d || 1);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffMs = target.getTime() - today.getTime();
+  return Math.round(diffMs / (24 * 60 * 60 * 1000));
+}
+
+function formatDateInput(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function upsertOutstanding(notes, value) {
   const safe = Math.max(0, Number(value || 0));
   const text = String(notes || "");
@@ -45,6 +76,19 @@ function upsertOutstanding(notes, value) {
     .map((v) => v.trim())
     .filter((v) => v && !v.toUpperCase().startsWith(OUT_PREFIX));
   return [`${OUT_PREFIX}${Math.round(safe)}`, ...lines].join("\n");
+}
+
+function appendChequeDueMarker(notes, chequeDate, saleId) {
+  const safeDate = String(chequeDate || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(safeDate)) return String(notes || "");
+  const safeSaleId = Number(saleId || 0);
+  const marker = safeSaleId > 0 ? `${CHEQUE_DUE_PREFIX}${safeDate}|SALE:${safeSaleId}` : `${CHEQUE_DUE_PREFIX}${safeDate}`;
+  const lines = String(notes || "")
+    .split("\n")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (!lines.includes(marker)) lines.push(marker);
+  return lines.join("\n");
 }
 
 function buildReceiptText(receipt) {
@@ -57,6 +101,7 @@ function buildReceiptText(receipt) {
     `Sale ID: ${receipt.saleId || "-"}`,
     `Customer ID: ${receipt.customerId || "-"}`,
     `Customer: ${receipt.customerName || "-"}`,
+    ...(receipt.paymentMethod === "check" && receipt.chequeDate ? [`Cheque Date: ${receipt.chequeDate}`] : []),
     `Payment: ${receipt.paymentMethod}`,
     "------------------------",
   ];
@@ -137,8 +182,18 @@ function CartRow({ item, onQtyChange, onFreeQtyChange, onRemove }) {
   );
 }
 
+function PanelTitle({ icon, label }) {
+  return (
+    <View style={styles.panelTitleRow}>
+      <Ionicons name={icon} size={18} color="#0f766e" />
+      <Text style={styles.panelTitleText}>{label}</Text>
+    </View>
+  );
+}
+
 export default function CashierScreen() {
   const { username, role } = useAuth();
+  const placeholderColor = "#6b7280";
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [outstandingMap, setOutstandingMap] = useState({});
@@ -152,6 +207,9 @@ export default function CashierScreen() {
   const [cashReceived, setCashReceived] = useState("");
   const [discountType, setDiscountType] = useState("none");
   const [discountValue, setDiscountValue] = useState("");
+  const [chequeDate, setChequeDate] = useState("");
+  const [showChequeDatePicker, setShowChequeDatePicker] = useState(false);
+  const [dismissedChequeAlertKey, setDismissedChequeAlertKey] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -319,6 +377,27 @@ export default function CashierScreen() {
   const saleOutstanding = paymentMethod === "credit" ? billTotal : Math.max(0, billTotal - normalizedCashReceived);
   const customerOutstandingAfterSale = Math.max(0, customerOutstandingNow + billTotal - normalizedCashReceived);
 
+  const chequeAlertsDueInTwoDays = useMemo(() => {
+    const rows = [];
+    for (const c of customers) {
+      const dates = parseChequeDueDates(c?.notes);
+      for (const dt of dates) {
+        if (daysUntilDate(dt) === 2) {
+          rows.push({
+            customerId: c.id,
+            customerName: c.name || "Customer",
+            date: dt,
+          });
+        }
+      }
+    }
+    return rows.sort((a, b) => String(a.customerName).localeCompare(String(b.customerName)));
+  }, [customers]);
+  const activeChequeAlert = chequeAlertsDueInTwoDays[0] || null;
+  const activeChequeAlertKey = activeChequeAlert
+    ? `${activeChequeAlert.customerId}|${activeChequeAlert.date}`
+    : "";
+
   function closeAllDropdowns() {
     setShowItemDropdown(false);
     setShowCustomerNameDropdown(false);
@@ -458,6 +537,11 @@ export default function CashierScreen() {
     setCart((prev) => prev.filter((item) => item.barcode !== code));
   }
 
+  function onChequeDateChange(event, selected) {
+    if (Platform.OS === "android") setShowChequeDatePicker(false);
+    if (selected) setChequeDate(formatDateInput(selected));
+  }
+
   function chooseCustomer(customer) {
     if (!ensureDayStartedForAction()) return;
     setSelectedCustomerId(customer.id);
@@ -468,13 +552,17 @@ export default function CashierScreen() {
     closeAllDropdowns();
   }
 
-  async function updateCustomerOutstanding(newOutstanding) {
-    if (!selectedCustomerId) return;
-    const target = customers.find((c) => c.id === selectedCustomerId);
+  async function updateCustomerOutstanding(newOutstanding, opts = {}) {
+    const targetCustomerId = opts.customerId || selectedCustomerId;
+    if (!targetCustomerId) return;
+    const target = customers.find((c) => c.id === targetCustomerId);
     if (!target) return;
-    const nextNotes = upsertOutstanding(target.notes, newOutstanding);
+    let nextNotes = upsertOutstanding(target.notes, newOutstanding);
+    if (opts.paymentMethod === "check" && opts.chequeDate) {
+      nextNotes = appendChequeDueMarker(nextNotes, opts.chequeDate, opts.saleId);
+    }
     try {
-      const updated = await apiFetch(`/customers/${selectedCustomerId}`, {
+      const updated = await apiFetch(`/customers/${targetCustomerId}`, {
         method: "PUT",
         body: JSON.stringify({
           notes: nextNotes,
@@ -484,7 +572,7 @@ export default function CashierScreen() {
         }),
       });
       setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-      setOutstandingMap((prev) => ({ ...prev, [selectedCustomerId]: Number(newOutstanding || 0) }));
+      setOutstandingMap((prev) => ({ ...prev, [targetCustomerId]: Number(newOutstanding || 0) }));
     } catch {
       // keep sale success even if notes update fails
     }
@@ -501,6 +589,13 @@ export default function CashierScreen() {
       setError("Select customer for partial cash payments");
       return;
     }
+    if (paymentMethod === "check") {
+      const cd = String(chequeDate || "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(cd)) {
+        setError("Cheque date is required (YYYY-MM-DD)");
+        return;
+      }
+    }
 
     setLoading(true);
     setError("");
@@ -516,6 +611,7 @@ export default function CashierScreen() {
         discountType,
         discountValue: Number(discountValue || 0),
         cashReceived: paymentMethod === "cash" ? normalizedCashReceived : 0,
+        chequeDate: paymentMethod === "check" ? String(chequeDate || "").trim() : null,
       };
 
       if (customerName.trim()) {
@@ -531,7 +627,12 @@ export default function CashierScreen() {
         body: JSON.stringify(payload),
       });
 
-      await updateCustomerOutstanding(customerOutstandingAfterSale);
+      await updateCustomerOutstanding(customerOutstandingAfterSale, {
+        customerId: saleResponse?.sale?.customerId || selectedCustomerId || null,
+        paymentMethod,
+        chequeDate: paymentMethod === "check" ? chequeDate : "",
+        saleId: saleResponse?.sale?.id || null,
+      });
 
       setLastReceipt({
         saleId: saleResponse?.sale?.id || "",
@@ -542,6 +643,7 @@ export default function CashierScreen() {
         discount: discountAmount,
         total: billTotal,
         paymentMethod,
+        chequeDate: paymentMethod === "check" ? String(chequeDate || "").trim() : "",
         cashReceived: normalizedCashReceived,
         outstanding: saleOutstanding,
         customerOutstandingNow: customerOutstandingAfterSale,
@@ -565,6 +667,7 @@ export default function CashierScreen() {
       setDiscountValue("");
       setPaymentMethod("cash");
       setCashReceived("");
+      setChequeDate("");
       setMessage("Sale completed");
       await loadData();
     } catch (e) {
@@ -590,6 +693,21 @@ export default function CashierScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.heading}>Cashier | {username || "User"}</Text>
+        {activeChequeAlert && dismissedChequeAlertKey !== activeChequeAlertKey ? (
+          <View style={styles.chequeAlert}>
+            <Text style={styles.chequeAlertText}>
+              Cheque alert (2 days): {activeChequeAlert.customerName} - {activeChequeAlert.date}
+              {chequeAlertsDueInTwoDays.length > 1 ? ` (+${chequeAlertsDueInTwoDays.length - 1} more)` : ""}
+            </Text>
+            <Pressable
+              onPress={() => setDismissedChequeAlertKey(activeChequeAlertKey)}
+              hitSlop={8}
+              style={styles.chequeAlertClose}
+            >
+              <Ionicons name="close" size={16} color="#92400e" />
+            </Pressable>
+          </View>
+        ) : null}
         {requiresStartDay ? (
           <View style={styles.dayBar}>
             <Text style={styles.dayStatusText}>
@@ -623,7 +741,7 @@ export default function CashierScreen() {
         {message ? <Text style={styles.success}>{message}</Text> : null}
 
         <View style={[styles.panel, { zIndex: 20 }]}>
-          <Text style={styles.panelTitle}>Add Item</Text>
+          <PanelTitle icon="barcode-outline" label="Add Item" />
           <View style={styles.inline}>
             <TextInput
               style={[styles.input, { flex: 1 }]}
@@ -637,6 +755,7 @@ export default function CashierScreen() {
               onFocus={() => setShowItemDropdown(true)}
               onBlur={() => setTimeout(() => setShowItemDropdown(false), 120)}
               placeholder="Barcode/Name"
+              placeholderTextColor={placeholderColor}
               editable={canUseCashierActions}
             />
             <Pressable
@@ -696,7 +815,7 @@ export default function CashierScreen() {
         </View>
 
         <View style={[styles.panel, { zIndex: 10 }]}>
-          <Text style={styles.panelTitle}>Customer</Text>
+          <PanelTitle icon="person-outline" label="Customer" />
           <TextInput
             style={styles.input}
             value={customerName}
@@ -714,6 +833,7 @@ export default function CashierScreen() {
             }}
             onBlur={() => setTimeout(() => setShowCustomerNameDropdown(false), 120)}
             placeholder="Name (optional)"
+            placeholderTextColor={placeholderColor}
             editable={canUseCashierActions}
           />
           {showCustomerNameDropdown ? (
@@ -764,6 +884,7 @@ export default function CashierScreen() {
             }}
             onBlur={() => setTimeout(() => setShowCustomerPhoneDropdown(false), 120)}
             placeholder="Phone"
+            placeholderTextColor={placeholderColor}
             editable={canUseCashierActions}
           />
           {showCustomerPhoneDropdown ? (
@@ -802,6 +923,7 @@ export default function CashierScreen() {
             value={customerAddress}
             onChangeText={setCustomerAddress}
             placeholder="Address"
+            placeholderTextColor={placeholderColor}
             editable={canUseCashierActions}
           />
           <Text
@@ -816,7 +938,7 @@ export default function CashierScreen() {
         </View>
 
         <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Cart</Text>
+          <PanelTitle icon="cart-outline" label="Cart" />
           {cart.length === 0 ? (
             <Text style={styles.empty}>Cart is empty</Text>
           ) : (
@@ -833,7 +955,7 @@ export default function CashierScreen() {
         </View>
 
         <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Payment</Text>
+          <PanelTitle icon="card-outline" label="Payment" />
           <Text style={styles.meta}>Payment method</Text>
           <View style={styles.inline}>
             {["cash", "card", "credit", "check"].map((method) => (
@@ -851,7 +973,9 @@ export default function CashierScreen() {
                 }}
                 disabled={!canUseCashierActions}
               >
-                <Text style={[styles.methodText, paymentMethod === method && styles.methodTextActive]}>{method}</Text>
+                <Text style={[styles.methodText, paymentMethod === method && styles.methodTextActive]}>
+                  {method === "check" ? "cheque" : method}
+                </Text>
               </Pressable>
             ))}
           </View>
@@ -864,9 +988,34 @@ export default function CashierScreen() {
                 value={cashReceived}
                 onChangeText={setCashReceived}
                 placeholder="Enter received cash"
+                placeholderTextColor={placeholderColor}
                 keyboardType="numeric"
                 editable={canUseCashierActions}
               />
+            </>
+          ) : null}
+
+          {paymentMethod === "check" ? (
+            <>
+              <Text style={[styles.meta, { marginTop: 4 }]}>Cheque Date (YYYY-MM-DD)</Text>
+              <Pressable
+                style={[styles.input, styles.dateInputBtn, !canUseCashierActions && styles.btnDisabled]}
+                onPress={() => canUseCashierActions && setShowChequeDatePicker(true)}
+                disabled={!canUseCashierActions}
+              >
+                <Text style={[styles.dateInputText, !chequeDate && { color: placeholderColor }]}>
+                  {chequeDate || "Select cheque date"}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color="#4b5563" />
+              </Pressable>
+              {showChequeDatePicker ? (
+                <DateTimePicker
+                  value={/^\d{4}-\d{2}-\d{2}$/.test(chequeDate) ? new Date(`${chequeDate}T00:00:00`) : new Date()}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  onChange={onChequeDateChange}
+                />
+              ) : null}
             </>
           ) : null}
 
@@ -896,6 +1045,7 @@ export default function CashierScreen() {
             onChangeText={setDiscountValue}
             editable={discountType !== "none" && canUseCashierActions}
             placeholder={discountType === "percent" ? "Percent" : "Amount"}
+            placeholderTextColor={placeholderColor}
             keyboardType="numeric"
           />
 
@@ -1005,6 +1155,27 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontWeight: "600",
   },
+  chequeAlert: {
+    backgroundColor: "#fef3c7",
+    borderColor: "#fcd34d",
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  chequeAlertText: {
+    color: "#92400e",
+    fontWeight: "600",
+    flex: 1,
+  },
+  chequeAlertClose: {
+    paddingTop: 1,
+  },
   panel: {
     backgroundColor: "#ffffff",
     borderColor: "#e5e7eb",
@@ -1019,6 +1190,18 @@ const styles = StyleSheet.create({
     color: "#111827",
     marginBottom: 8,
   },
+  panelTitleText: {
+    fontWeight: "700",
+    fontSize: 16,
+    color: "#111827",
+    lineHeight: 20,
+  },
+  panelTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
   inline: {
     flexDirection: "row",
     alignItems: "center",
@@ -1027,6 +1210,7 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: "#fff",
+    color: "#111827",
     borderColor: "#d1d5db",
     borderWidth: 1,
     borderRadius: 8,
@@ -1043,6 +1227,15 @@ const styles = StyleSheet.create({
   actionText: {
     color: "#fff",
     fontWeight: "700",
+  },
+  dateInputBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  dateInputText: {
+    color: "#111827",
+    fontWeight: "500",
   },
   btnDisabled: {
     opacity: 0.5,
@@ -1139,6 +1332,7 @@ const styles = StyleSheet.create({
   qtyInput: {
     width: 44,
     height: 30,
+    color: "#111827",
     borderWidth: 1,
     borderColor: "#d1d5db",
     borderRadius: 6,

@@ -54,6 +54,7 @@ const CustomerCard = React.memo(function CustomerCard({ item, outstanding }) {
 
 export default function CustomersScreen() {
   useAuth();
+  const placeholderColor = "#6b7280";
   const [customers, setCustomers] = useState([]);
   const [outstandingMap, setOutstandingMap] = useState({});
   const [query, setQuery] = useState("");
@@ -203,6 +204,7 @@ export default function CustomersScreen() {
         value={query}
         onChangeText={setQuery}
         placeholder="Search customer"
+        placeholderTextColor={placeholderColor}
       />
       <Text style={styles.filterLabel}>Sort by</Text>
       <View style={styles.sortRow}>
@@ -254,18 +256,21 @@ export default function CustomersScreen() {
                 value={customerIdInput}
                 onChangeText={setCustomerIdInput}
                 placeholder="Customer ID *"
+                placeholderTextColor={placeholderColor}
               />
               <TextInput
                 style={styles.input}
                 value={nameInput}
                 onChangeText={setNameInput}
                 placeholder="Name *"
+                placeholderTextColor={placeholderColor}
               />
               <TextInput
                 style={styles.input}
                 value={phoneInput}
                 onChangeText={(v) => setPhoneInput(String(v || "").replace(/\D/g, "").slice(0, 10))}
                 placeholder="Phone *"
+                placeholderTextColor={placeholderColor}
                 keyboardType="numeric"
                 maxLength={10}
               />
@@ -274,6 +279,7 @@ export default function CustomersScreen() {
                 value={addressInput}
                 onChangeText={setAddressInput}
                 placeholder="Address"
+                placeholderTextColor={placeholderColor}
               />
             </ScrollView>
             <View style={styles.modalActions}>
@@ -317,6 +323,7 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: "#fff",
+    color: "#111827",
     borderWidth: 1,
     borderColor: "#d1d5db",
     borderRadius: 10,

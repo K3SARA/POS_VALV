@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { apiFetch } from "../api/client";
 
 export default function RoutesScreen() {
+  const placeholderColor = "#6b7280";
   const [routes, setRoutes] = useState([]);
   const [newRouteName, setNewRouteName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -80,6 +81,7 @@ export default function RoutesScreen() {
           value={newRouteName}
           onChangeText={setNewRouteName}
           placeholder="New route name"
+          placeholderTextColor={placeholderColor}
         />
         <Pressable style={styles.smallBtn} onPress={addRoute}>
           <Text style={styles.buttonText}>Add</Text>
@@ -137,6 +139,7 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: "#fff",
+    color: "#111827",
     borderColor: "#d1d5db",
     borderWidth: 1,
     borderRadius: 8,

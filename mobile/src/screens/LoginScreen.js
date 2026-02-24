@@ -76,7 +76,7 @@ export default function LoginScreen() {
         Powered by{" "}
         <Text
           style={styles.poweredLink}
-          onPress={() => Linking.openURL("https://jncosoftwaresolutions.pages.dev/")}
+          onPress={() => Linking.openURL("https://jnco.up.railway.app/")}
         >
           J&co.
         </Text>

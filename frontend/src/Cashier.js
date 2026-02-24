@@ -5,6 +5,26 @@ import TopNav from "./TopNav";
 import ReceiptPrint from "./ReceiptPrint";
 import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
 
+const CHEQUE_DUE_PREFIX = "CHEQUE_DUE:";
+
+function parseChequeDueDates(notes) {
+  return String(notes || "")
+    .split("\n")
+    .map((v) => v.trim())
+    .filter((v) => v.toUpperCase().startsWith(CHEQUE_DUE_PREFIX))
+    .map((line) => line.slice(CHEQUE_DUE_PREFIX.length).trim().split("|")[0]?.trim())
+    .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")));
+}
+
+function daysUntilDate(dateText) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateText || ""))) return null;
+  const [y, m, d] = String(dateText).split("-").map(Number);
+  const target = new Date(y, (m || 1) - 1, d || 1);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
 export default function Cashier({ onLogout }) {
   const role = localStorage.getItem("role");
   const requiresStartDay = role === "cashier";
@@ -14,8 +34,10 @@ export default function Cashier({ onLogout }) {
   // Discount + Payment
   const [discountType, setDiscountType] = useState("none"); // none | amount | percent
   const [discountValue, setDiscountValue] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("cash"); // cash | card | credit | check
+  const [paymentMethod, setPaymentMethod] = useState("cash"); // cash | card | credit | cheque
   const [cashReceived, setCashReceived] = useState("");
+  const [chequeDate, setChequeDate] = useState("");
+  const [dismissedChequeAlertKey, setDismissedChequeAlertKey] = useState("");
   const [showPrint, setShowPrint] = useState(false);
   const [printPayload, setPrintPayload] = useState(null);
   const [showLayoutEditor, setShowLayoutEditor] = useState(false);
@@ -75,8 +97,12 @@ export default function Cashier({ onLogout }) {
   const [allCustomers, setAllCustomers] = useState([]);
 
   const loadAllCustomers = async () => {
-    // keep for backward compatibility; dropdown now queries by text
-    return;
+    try {
+      const data = await apiFetch("/customers");
+      setAllCustomers(Array.isArray(data) ? data : []);
+    } catch {
+      setAllCustomers([]);
+    }
   };
 
   const filterCustomers = (text) => {
@@ -118,6 +144,10 @@ export default function Cashier({ onLogout }) {
 
   useEffect(() => {
     fetchDrafts();
+  }, []);
+
+  useEffect(() => {
+    loadAllCustomers();
   }, []);
 
   useEffect(() => {
@@ -237,6 +267,25 @@ export default function Cashier({ onLogout }) {
 
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const chequeAlertsDueInTwoDays = useMemo(() => {
+    const rows = [];
+    for (const c of allCustomers) {
+      const dates = parseChequeDueDates(c?.notes);
+      for (const dt of dates) {
+        if (daysUntilDate(dt) === 2) {
+          rows.push({
+            customerId: c.id,
+            customerName: c.name || "Customer",
+            date: dt,
+          });
+        }
+      }
+    }
+    return rows.sort((a, b) => String(a.customerName).localeCompare(String(b.customerName)));
+  }, [allCustomers]);
+  const activeChequeAlert = chequeAlertsDueInTwoDays[0] || null;
+  const activeChequeAlertKey = activeChequeAlert ? `${activeChequeAlert.customerId}|${activeChequeAlert.date}` : "";
 
   useEffect(() => {
     if (!requiresStartDay) {
@@ -506,6 +555,7 @@ export default function Cashier({ onLogout }) {
     setDiscountValue("");
     setPaymentMethod("cash");
     setCashReceived("");
+    setChequeDate("");
 
     setShowCustomerDropdown(false);
     setCustomerResults([]);
@@ -526,6 +576,7 @@ export default function Cashier({ onLogout }) {
         discountValue,
         paymentMethod,
         cashReceived,
+        chequeDate,
       };
 
       await apiFetch("/drafts", {
@@ -560,6 +611,7 @@ export default function Cashier({ onLogout }) {
       setDiscountValue(d.discountValue ?? "");
       setPaymentMethod(d.paymentMethod || "cash");
       setCashReceived(d.cashReceived ?? "");
+      setChequeDate(d.chequeDate ?? "");
 
       setMsg("Draft loaded");
     } catch (e) {
@@ -652,6 +704,13 @@ export default function Cashier({ onLogout }) {
         return;
       }
     }
+    if (paymentMethod === "check") {
+      const cd = String(chequeDate || "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(cd)) {
+        setMsg("Cheque date is required (YYYY-MM-DD)");
+        return;
+      }
+    }
 
       const payload = {
         items: cart.map((i) => ({
@@ -664,6 +723,7 @@ export default function Cashier({ onLogout }) {
         paymentMethod,
         discountType,
         discountValue,
+        chequeDate: paymentMethod === "check" ? chequeDate : null,
       };
 
 
@@ -728,6 +788,7 @@ export default function Cashier({ onLogout }) {
         customerAddress,
       });
       clearCart();
+      loadAllCustomers();
     } catch (e) {
       setMsg("Error: " + e.message);
     } finally {
@@ -802,6 +863,35 @@ export default function Cashier({ onLogout }) {
       )}
 
       {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
+      {activeChequeAlert && dismissedChequeAlertKey !== activeChequeAlertKey && (
+        <div
+          style={{
+            marginTop: 12,
+            border: "1px solid #fcd34d",
+            background: "#fef3c7",
+            color: "#92400e",
+            borderRadius: 8,
+            padding: "8px 10px",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <div style={{ fontWeight: 600 }}>
+            Cheque alert (2 days): {activeChequeAlert.customerName} - {activeChequeAlert.date}
+            {chequeAlertsDueInTwoDays.length > 1 ? ` (+${chequeAlertsDueInTwoDays.length - 1} more)` : ""}
+          </div>
+          <button
+            className="btn ghost"
+            onClick={() => setDismissedChequeAlertKey(activeChequeAlertKey)}
+            style={{ padding: "2px 8px", lineHeight: 1 }}
+            title="Close"
+          >
+            x
+          </button>
+        </div>
+      )}
 
       {/* Customer + Barcode add */}
       <div style={{ marginTop: 10 }}>
@@ -1107,6 +1197,7 @@ export default function Cashier({ onLogout }) {
               onChange={(e) => {
                 setPaymentMethod(e.target.value);
                 setCashReceived("");
+                if (e.target.value !== "check") setChequeDate("");
               }}
               style={{ width: "100%", padding: 10, marginTop: 5 }}
             >
@@ -1125,6 +1216,16 @@ export default function Cashier({ onLogout }) {
               onChange={(e) => setCashReceived(e.target.value)}
               disabled={paymentMethod !== "cash"}
               placeholder="ex: 5000"
+              style={{ width: "100%", padding: 10, marginTop: 5 }}
+            />
+          </div>
+          <div>
+            <label>Cheque Date</label>
+            <input
+              type="date"
+              value={chequeDate}
+              onChange={(e) => setChequeDate(e.target.value)}
+              disabled={paymentMethod !== "check"}
               style={{ width: "100%", padding: 10, marginTop: 5 }}
             />
           </div>

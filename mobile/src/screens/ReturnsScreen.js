@@ -10,6 +10,7 @@ function toReasonLabel(type) {
 }
 
 export default function ReturnsScreen() {
+  const placeholderColor = "#6b7280";
   const [saleId, setSaleId] = useState("");
   const [sale, setSale] = useState(null);
   const [selected, setSelected] = useState({});
@@ -165,6 +166,7 @@ export default function ReturnsScreen() {
           onChangeText={setSaleId}
           keyboardType="numeric"
           placeholder="Enter sale ID"
+          placeholderTextColor={placeholderColor}
         />
         <Pressable style={styles.button} onPress={loadSale}>
           <Text style={styles.buttonText}>Load Bill</Text>
@@ -196,6 +198,7 @@ export default function ReturnsScreen() {
                       value={paid ? String(paid) : ""}
                       onChangeText={(v) => setQty(si.id, "qty", v)}
                       placeholder="0"
+                      placeholderTextColor={placeholderColor}
                     />
                   </View>
                   <View style={styles.inputWrap}>
@@ -206,6 +209,7 @@ export default function ReturnsScreen() {
                       value={free ? String(free) : ""}
                       onChangeText={(v) => setQty(si.id, "freeQty", v)}
                       placeholder="0"
+                      placeholderTextColor={placeholderColor}
                     />
                   </View>
                 </View>
@@ -231,6 +235,7 @@ export default function ReturnsScreen() {
               value={customReason}
               onChangeText={setCustomReason}
               placeholder="Type reason"
+              placeholderTextColor={placeholderColor}
             />
           ) : null}
 
@@ -288,6 +293,7 @@ const styles = StyleSheet.create({
   },
   input: {
     backgroundColor: "#fff",
+    color: "#111827",
     borderColor: "#d1d5db",
     borderWidth: 1,
     borderRadius: 8,

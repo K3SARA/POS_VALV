@@ -42,11 +42,13 @@ export default function ReceiptPrint(props) {
 
   const freeItems = (items || [])
     .map((i) => ({
+      code: i.barcode || "-",
       name: i.name,
       qty: Number(i.freeIssue ? i.qty : i.freeQty || 0) || 0,
     }))
     .filter((i) => i.qty > 0);
   const freeItemsText = freeItems.map((i) => `${i.name} x ${Number(i.qty || 0).toLocaleString()}`).join(", ");
+  const freeItemsTextA4 = freeItems.map((i) => `${i.code} x ${Number(i.qty || 0).toLocaleString()}`).join(", ");
   const money = (v) => formatMoney(v);
   const count = (v) => formatNumber(v);
   const invoiceDate = dateText || new Date().toLocaleString();
@@ -142,8 +144,8 @@ export default function ReceiptPrint(props) {
             <div>Name : {customerName || "-"}</div>
             <div>Address : {customerAddress || "-"}</div>
             <div>Contact No : {customerPhone || "-"}</div>
-            <div>Root : {safeRoute}</div>
-            <div>Vat Reg : -</div>
+            
+           
           </div>
           <div className="inv-panel">
             <div className="inv-panel-title">Invoice</div>
@@ -190,7 +192,7 @@ export default function ReceiptPrint(props) {
 
         <div className="inv-bottom-grid">
           <div className="inv-bank-box">
-            <div className="inv-bank-headline">Cheques should be drawn in favor of <b>APEX LOGISTICS</b> &amp; Crossed <b>A/C Payee Only</b></div>
+            <div className="inv-bank-headline">Cheques should be drawn in favor of <b>APEX LOGISTICS (PVT) LTD.</b> &amp; Crossed <b>A/C Payee Only</b></div>
             <div className="inv-bank-title">Bank Details:</div>
             <div className="inv-bank-box_sub">
               <div className="inv-bank-line">Account Name - APEX LOGISTICS (PVT) LIMITED</div>
@@ -205,7 +207,7 @@ export default function ReceiptPrint(props) {
             <div className="inv-total-row inv-total-row-main">
               <span>ITEM DISCOUNT :</span><span>{money(totalItemDiscount)}</span>
             </div>
-            {freeItems.length > 0 && (<div className="inv-total-row inv-total-row-main inv-free-items-row"><span>FREE ITEMS :</span><span>{freeItemsText}</span></div>)}
+            {freeItems.length > 0 && (<div className="inv-total-row inv-total-row-main inv-free-items-row"><span>FREE ITEMS :</span><span>{freeItemsTextA4}</span></div>)}
             <div className="inv-total-row inv-total-row-main">
               <span>(VAT % 0.000) :</span><span>-</span>
             </div>
