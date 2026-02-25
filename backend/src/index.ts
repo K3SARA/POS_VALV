@@ -1473,24 +1473,32 @@ app.delete("/sales/:id", auth, adminOnly, async (req: AuthedRequest, res) => {
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const sale = await tx.sale.findUnique({
-        where: { id: saleId },
-        include: { saleItems: true },
-      });
-
-      if (!sale) throw new Error("Sale not found");
-
-      for (const si of sale.saleItems) {
-        await tx.product.update({
-          where: { id: si.productId },
-          data: { stock: { increment: si.qty } },
-        });
-      }
-
-      await tx.saleItem.deleteMany({ where: { saleId } });
-      await tx.sale.delete({ where: { id: saleId } });
+    const sale = await prisma.sale.findUnique({
+      where: { id: saleId },
+      include: { saleReturns: true },
     });
+    if (!sale) return res.status(404).json({ error: "Sale not found" });
+
+    const ops: Prisma.PrismaPromise<any>[] = [];
+
+    // Do NOT restore stock on sale delete (requested behavior).
+    // Sale is removed for history cleanup only; stock stays as-is.
+
+    if (sale.saleReturns.length > 0) {
+      ops.push(
+        prisma.returnItem.deleteMany({
+          where: {
+            returnId: { in: sale.saleReturns.map((r) => r.id) },
+          },
+        })
+      );
+      ops.push(prisma.saleReturn.deleteMany({ where: { saleId } }));
+    }
+
+    ops.push(prisma.saleItem.deleteMany({ where: { saleId } }));
+    ops.push(prisma.sale.delete({ where: { id: saleId } }));
+
+    await prisma.$transaction(ops);
 
     res.json({ message: "Sale deleted successfully" });
   } catch (e: any) {
