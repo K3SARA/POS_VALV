@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import bcrypt from "bcrypt";
@@ -81,6 +81,7 @@ function adminOnly(req: any, res: any, next: any) {
   }
   next();
 }
+
 const requireAnyRole = (...roles: Array<"admin" | "cashier">) => {
   return (req: any, res: any, next: any) => {
     const role = req.user?.role;
@@ -207,7 +208,7 @@ console.log("DB PASSWORD HASH:", user?.password);
       return res.status(401).json({ error: "Invalid username/password" });
     }
 
-    // âœ… Cashiers are bcrypt-hashed; admin may be plain (for now)
+    // ✅ Cashiers are bcrypt-hashed; admin may be plain (for now)
     let ok = false;
     if (typeof user.password === "string" && user.password.startsWith("$2")) {
       ok = await bcrypt.compare(p, user.password);
@@ -555,6 +556,37 @@ app.get("/admin/cashier/day/logs", auth, requireRole("admin"), async (req, res) 
 
 // ------------------- CUSTOMER API -------------------
 
+async function generateNextValCustomerId(db: PrismaClient | Prisma.TransactionClient) {
+  const rows = await db.customer.findMany({
+    where: { id: { startsWith: "VAL" } },
+    select: { id: true },
+    take: 10000,
+  });
+
+  let maxNum = 206; // so next defaults to VAL207 when no VAL ids exist yet
+  let padWidth = 0;
+
+  for (const row of rows) {
+    const id = String(row.id || "").trim();
+    const m = /^VAL(\d+)$/i.exec(id);
+    if (!m) continue;
+    const digits = String(m[1] || "");
+    if (!digits) continue;
+    const n = Number(digits);
+    if (!Number.isFinite(n)) continue;
+    if (n > maxNum) {
+      maxNum = n;
+      padWidth = digits.length > String(n).length ? digits.length : 0;
+    } else if (n === maxNum) {
+      padWidth = Math.max(padWidth, digits.length > String(n).length ? digits.length : 0);
+    }
+  }
+
+  const nextNum = maxNum + 1;
+  const nextDigits = padWidth > 0 ? String(nextNum).padStart(padWidth, "0") : String(nextNum);
+  return `VAL${nextDigits}`;
+}
+
 // Create customer (admin OR cashier)
 app.post("/customers", auth, async (req, res) => {
   try {
@@ -569,15 +601,7 @@ app.post("/customers", auth, async (req, res) => {
       return res.status(400).json({ error: "Customer name is required" });
     }
 
-    if (!safeCustomerId) {
-      const last = await prisma.customer.findFirst({
-        where: { id: { startsWith: "VAL" } },
-        orderBy: { id: "desc" },
-      });
-      const lastNum = last?.id ? Number(String(last.id).replace(/^VAL/i, "")) : 0;
-      const nextNum = Number.isFinite(lastNum) ? lastNum + 1 : 1;
-      safeCustomerId = `VAL${String(nextNum).padStart(5, "0")}`;
-    }
+    if (!safeCustomerId) safeCustomerId = await generateNextValCustomerId(prisma);
 
     const customer = await prisma.customer.create({
       data: {
@@ -599,7 +623,7 @@ app.post("/customers", auth, async (req, res) => {
 });
 
 /**
- * âœ… CASHIER + ADMIN customer dropdown/search (WORKS ALL DBs)
+ * ✅ CASHIER + ADMIN customer dropdown/search (WORKS ALL DBs)
  * Fixes:
  * - no ILIKE
  * - no queryRaw
@@ -633,7 +657,7 @@ app.get("/customers", auth, async (req, res) => {
   }
 });
 
-// âœ… ADMIN only: load all customers for admin dashboard table
+// ✅ ADMIN only: load all customers for admin dashboard table
 app.get("/customers/all", auth, requireRole("admin"), async (req, res) => {
   try {
     const customers = await prisma.customer.findMany({
@@ -758,7 +782,7 @@ app.post("/products", auth, requireRole("admin"), async (req, res) => {
             : null,
         stock: Number(stock || 0),
 
-        // âœ… new optional fields
+        // ✅ new optional fields
         supplierName: supplierName ? String(supplierName) : null,
         supplierInvoiceNo: supplierInvoiceNo ? String(supplierInvoiceNo) : null,
         supplierPaymentMethod: safePm,
@@ -903,7 +927,10 @@ app.post("/customers", auth, requireAnyRole("admin", "cashier"), async (req, res
       return res.status(400).json({ error: "Customer name is required" });
     }
 
-    const safeCustomerId = customerId ? String(customerId).trim() : "";
+    let safeCustomerId = customerId ? String(customerId).trim() : "";
+    if (!safeCustomerId) {
+      safeCustomerId = await generateNextValCustomerId(prisma);
+    }
     const created = await prisma.customer.create({
   data: {
     ...(safeCustomerId ? { id: safeCustomerId } : {}),
@@ -1056,6 +1083,7 @@ app.post("/sales", auth, async (req: AuthedRequest, res) => {
             ? existing
             : await tx.customer.create({
                 data: {
+                  id: await generateNextValCustomerId(tx),
                   name,
                   phone: phone || null,
                   address: address || null,
@@ -1123,7 +1151,7 @@ app.post("/sales", auth, async (req: AuthedRequest, res) => {
                 const unitPrice = Number(product.price);
         const lineBase = unitPrice * qty;
 
-        // âœ… item-wise discount from frontend (optional)
+        // ✅ item-wise discount from frontend (optional)
         const dtRaw = String(item.itemDiscountType || "none");
         const dt =
           dtRaw === "amount" || dtRaw === "percent" || dtRaw === "none" ? dtRaw : "none";
@@ -1153,12 +1181,12 @@ app.post("/sales", auth, async (req: AuthedRequest, res) => {
             freeQty,
             price: product.price,
 
-            // âœ… save discount info in SaleItem (new columns)
+            // ✅ save discount info in SaleItem (new columns)
             itemDiscountType: dt === "none" ? null : dt,
             itemDiscountValue: dt === "none" ? null : new Prisma.Decimal(lineDisc),
             barcode: product.barcode ?? String(item.barcode),
 
-            // âŒ remove barcode from saleItem (recommended)
+            // ❌ remove barcode from saleItem (recommended)
             // If your SaleItem still has barcode in schema, keep this line:
             // barcode: product.barcode ?? String(item.barcode),
           },
@@ -1506,6 +1534,23 @@ app.delete("/sales/:id", auth, adminOnly, async (req: AuthedRequest, res) => {
   }
 });
 
+function isPendingSaleRequestDraft(draft: any) {
+  return String((draft as any)?.data?.kind || "") === "pending_sale_request";
+}
+
+function normalizePendingSalePayload(payload: any) {
+  const body = payload || {};
+  return {
+    items: Array.isArray(body.items) ? body.items : [],
+    customer: body.customer && typeof body.customer === "object" ? body.customer : null,
+    paymentMethod: body.paymentMethod ? String(body.paymentMethod) : "cash",
+    discountType: body.discountType ? String(body.discountType) : "none",
+    discountValue: body.discountValue ?? 0,
+    cashReceived: body.cashReceived ?? "",
+    chequeDate: body.chequeDate ?? null,
+  };
+}
+
 // ------------------- DRAFT SALES -------------------
 // Save a draft bill (cashier/admin)
 app.post("/drafts", auth, async (req: AuthedRequest, res) => {
@@ -1560,8 +1605,7 @@ app.get("/drafts", auth, async (req: AuthedRequest, res) => {
     }
 
     const drafts = await prisma.draftSale.findMany(draftsArgs);
-
-    res.json(drafts);
+    res.json(drafts.filter((d) => !isPendingSaleRequestDraft(d)));
   } catch (e: any) {
     res.status(500).json({ error: e.message || "Failed to load drafts" });
   }
@@ -1575,6 +1619,7 @@ app.get("/drafts/:id", auth, async (req: AuthedRequest, res) => {
   try {
     const draft = await prisma.draftSale.findUnique({ where: { id } });
     if (!draft) return res.status(404).json({ error: "Draft not found" });
+    if (isPendingSaleRequestDraft(draft)) return res.status(404).json({ error: "Draft not found" });
 
     // cashier can only access own drafts
     if (req.user?.role !== "admin") {
@@ -1598,6 +1643,7 @@ app.put("/drafts/:id", auth, async (req: AuthedRequest, res) => {
   try {
     const existing = await prisma.draftSale.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: "Draft not found" });
+    if (isPendingSaleRequestDraft(existing)) return res.status(404).json({ error: "Draft not found" });
 
     if (req.user?.role !== "admin") {
       const userId = typeof req.user?.id === "number" ? req.user.id : Number(req.user?.id || 0);
@@ -1640,6 +1686,7 @@ app.delete("/drafts/:id", auth, async (req: AuthedRequest, res) => {
   try {
     const existing = await prisma.draftSale.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: "Draft not found" });
+    if (isPendingSaleRequestDraft(existing)) return res.status(404).json({ error: "Draft not found" });
 
     if (req.user?.role !== "admin") {
       const userId = typeof req.user?.id === "number" ? req.user.id : Number(req.user?.id || 0);
@@ -1652,6 +1699,191 @@ app.delete("/drafts/:id", auth, async (req: AuthedRequest, res) => {
     res.json({ message: "Draft deleted" });
   } catch (e: any) {
     res.status(400).json({ error: e.message || "Failed to delete draft" });
+  }
+});
+
+// ------------------- PENDING SALE REQUESTS (stored in DraftSale.data) -------------------
+app.post("/pending-sales", auth, requireAnyRole("admin", "cashier"), async (req: AuthedRequest, res) => {
+  try {
+    const payload = normalizePendingSalePayload(req.body);
+    if (!Array.isArray(payload.items) || payload.items.length === 0) {
+      return res.status(400).json({ error: "No items provided" });
+    }
+
+    const createdById =
+      typeof req.user?.id === "number" ? req.user.id : Number(req.user?.id || 0) || null;
+
+    const row = await prisma.draftSale.create({
+      data: {
+        name: `Pending Sale Request`,
+        data: {
+          kind: "pending_sale_request",
+          status: "pending",
+          payload,
+          requestedBy: {
+            id: createdById,
+            username: String(req.user?.username || ""),
+            role: String(req.user?.role || ""),
+          },
+          requestedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        createdById,
+      },
+    });
+
+    res.status(201).json(row);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "Failed to create pending sale request" });
+  }
+});
+
+app.get("/pending-sales", auth, requireAnyRole("admin", "cashier"), async (req: AuthedRequest, res) => {
+  try {
+    const role = String(req.user?.role || "");
+    const userId =
+      typeof req.user?.id === "number" ? req.user.id : Number(req.user?.id || 0) || 0;
+
+    const rows = await prisma.draftSale.findMany({
+      orderBy: { updatedAt: "desc" },
+      take: 500,
+      ...(role === "admin" ? {} : { where: { OR: [{ createdById: userId }, { createdById: null }] } }),
+    });
+
+    const pending = rows
+      .filter((r) => isPendingSaleRequestDraft(r))
+      .map((r) => ({
+        ...r,
+        pending: r.data,
+      }));
+
+    res.json(pending);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Failed to load pending sales" });
+  }
+});
+
+app.get("/pending-sales/:id", auth, requireAnyRole("admin", "cashier"), async (req: AuthedRequest, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid pending sale id" });
+  try {
+    const row = await prisma.draftSale.findUnique({ where: { id } });
+    if (!row || !isPendingSaleRequestDraft(row)) {
+      return res.status(404).json({ error: "Pending sale not found" });
+    }
+    if (req.user?.role !== "admin") {
+      const userId = typeof req.user?.id === "number" ? req.user.id : Number(req.user?.id || 0);
+      if (row.createdById && row.createdById !== userId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+    res.json({ ...row, pending: row.data });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || "Failed to load pending sale" });
+  }
+});
+
+app.put("/pending-sales/:id", auth, requireAnyRole("admin", "cashier"), async (req: AuthedRequest, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid pending sale id" });
+  try {
+    const existing = await prisma.draftSale.findUnique({ where: { id } });
+    if (!existing || !isPendingSaleRequestDraft(existing)) {
+      return res.status(404).json({ error: "Pending sale not found" });
+    }
+    if (req.user?.role !== "admin") {
+      const userId = typeof req.user?.id === "number" ? req.user.id : Number(req.user?.id || 0);
+      if (existing.createdById && existing.createdById !== userId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+
+    const dataObj: any = (existing.data && typeof existing.data === "object") ? existing.data : {};
+    if (String(dataObj.status || "pending") !== "pending") {
+      return res.status(400).json({ error: "Only pending requests can be edited" });
+    }
+
+    const payload = normalizePendingSalePayload(req.body?.payload ?? req.body);
+    if (!Array.isArray(payload.items) || payload.items.length === 0) {
+      return res.status(400).json({ error: "No items provided" });
+    }
+
+    const updated = await prisma.draftSale.update({
+      where: { id },
+      data: {
+        data: {
+          ...dataObj,
+          payload,
+          updatedAt: new Date().toISOString(),
+          lastEditedBy: {
+            id: typeof req.user?.id === "number" ? req.user.id : Number(req.user?.id || 0) || null,
+            username: String(req.user?.username || ""),
+            role: String(req.user?.role || ""),
+          },
+        },
+      },
+    });
+
+    res.json({ ...updated, pending: updated.data });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "Failed to update pending sale" });
+  }
+});
+
+app.delete("/pending-sales/:id", auth, requireAnyRole("admin", "cashier"), async (req: AuthedRequest, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid pending sale id" });
+  try {
+    const existing = await prisma.draftSale.findUnique({ where: { id } });
+    if (!existing || !isPendingSaleRequestDraft(existing)) {
+      return res.status(404).json({ error: "Pending sale not found" });
+    }
+    if (req.user?.role !== "admin") {
+      const userId = typeof req.user?.id === "number" ? req.user.id : Number(req.user?.id || 0);
+      if (existing.createdById && existing.createdById !== userId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+    await prisma.draftSale.delete({ where: { id } });
+    res.json({ message: "Pending sale deleted" });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "Failed to delete pending sale" });
+  }
+});
+
+app.post("/pending-sales/:id/approve", auth, adminOnly, async (req: AuthedRequest, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid pending sale id" });
+  try {
+    const existing = await prisma.draftSale.findUnique({ where: { id } });
+    if (!existing || !isPendingSaleRequestDraft(existing)) {
+      return res.status(404).json({ error: "Pending sale not found" });
+    }
+    const dataObj: any = (existing.data && typeof existing.data === "object") ? existing.data : {};
+    if (String(dataObj.status || "pending") !== "pending") {
+      return res.status(400).json({ error: "Pending sale already processed" });
+    }
+
+    const saleId = Number(req.body?.saleId || 0) || null;
+    const updated = await prisma.draftSale.update({
+      where: { id },
+      data: {
+        data: {
+          ...dataObj,
+          status: "approved",
+          approvedAt: new Date().toISOString(),
+          approvedBy: {
+            id: typeof req.user?.id === "number" ? req.user.id : Number(req.user?.id || 0) || null,
+            username: String(req.user?.username || ""),
+            role: String(req.user?.role || ""),
+          },
+          approvedSaleId: saleId,
+        },
+      },
+    });
+    res.json({ message: "Pending sale approved", row: updated });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "Failed to approve pending sale" });
   }
 });
 
@@ -2254,7 +2486,7 @@ if (hasFrontendBuild) {
 }
 
 /**
- * âœ… Fixes your crash: "Missing parameter name at index 1: *"
+ * ✅ Fixes your crash: "Missing parameter name at index 1: *"
  * Use a safe wildcard that works cleanly.
  */
 if (hasFrontendBuild) {

@@ -69,9 +69,11 @@ export default function SalesHistory() {
 
   return (
     <div className="page">
-      <TopNav />
+      <TopNav
+        title="Sales History | Apex Logistics"
+        subtitle="Minimal control center for your POS"
+      />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
-        <h2 style={{ margin: 0 }}>Sales History</h2>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={() => navigate(-1)} style={{ padding: 10 }}>Back</button>
           <button onClick={loadSales} disabled={loading} style={{ padding: 10 }}>Refresh</button>

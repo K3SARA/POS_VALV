@@ -75,6 +75,8 @@ export default function Returns({ onLogout }) {
       color: "var(--text)",
       background: "transparent",
       minHeight: "100vh",
+      maxWidth: 1248,
+      margin: "0 auto",
     },
     header: {
       display: "flex",
@@ -710,10 +712,11 @@ export default function Returns({ onLogout }) {
 
   return (
     <div style={styles.page}>
-      <div style={styles.header}>
-        <h2 style={styles.title}>{"\u21A9\uFE0F"} Returns</h2>
-        <TopNav onLogout={onLogout} />
-      </div>
+      <TopNav
+        onLogout={onLogout}
+        title="Returns | Apex Logistics"
+        subtitle="Minimal control center for your POS"
+      />
 
       {/* ??????? Filter buttons */}
       <div style={styles.filters}>
@@ -781,7 +784,7 @@ export default function Returns({ onLogout }) {
                   >
                     <div style={{ fontWeight: 700 }}>Sale #{s.id}</div>
                     <div style={{ fontSize: 12, color: "#000" }}>
-                      {new Date(s.createdAt).toLocaleString()} - {s.customer?.name || s.customerName || "Walk-in"} - Rs {s.total}
+                      {new Date(s.createdAt).toLocaleString()} - {s.customer?.name || s.customerName || "Walk-in"} - Rs {formatNumber(s.total)}
                     </div>
                   </div>
                 ))}

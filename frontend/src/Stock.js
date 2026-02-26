@@ -371,7 +371,7 @@ export default function Stock() {
             radial-gradient(900px 400px at 90% -20%, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0) 55%),
             var(--bg);
           min-height: 100vh;
-          padding: 24px 20px 40px;
+          padding: 24px 24px 40px;
         }
         .admin-content { max-width: 1200px; margin: 0 auto; }
         .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
@@ -427,22 +427,23 @@ export default function Stock() {
       `}</style>
 
       <div className="admin-content">
-        <div className="topbar">
-          <div className="title">
-            <h2>Stock</h2>
-           
-
-            <span>Search, edit, and delete items</span>
-          </div>
-          <TopNav onLogout={doLogout} />
-          </div>
+        <TopNav
+          onLogout={doLogout}
+          title="Stock | Apex Logistics"
+          subtitle="Search, edit, and delete items"
+        />
 
         {msg && <div className="banner">{msg}</div>}
 
         <div className="panel">
           <div className="table-tools">
             <div>
-              <h3 style={{ margin: 0 }}>Current Stock</h3>
+              <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <span>Current Stock</span>
+                <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 500 }}>
+                  ({formatNumber(products.length)} items)
+                </span>
+              </h3>
               <span style={{ color: "var(--muted)", fontSize: 12 }}>Auto-loaded on page open</span>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

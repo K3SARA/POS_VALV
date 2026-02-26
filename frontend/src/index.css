@@ -47,6 +47,64 @@ button {
 button:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 button:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; transform: none; }
 
+/* Shared button variants (used by TopNav and page actions) */
+.btn {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.btn.ghost {
+  background: #0f172a;
+  color: #ffffff;
+}
+.btn.secondary {
+  background: #12203a;
+  color: #ffffff;
+}
+.btn.danger {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #ffffff;
+}
+.btn.danger:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+.btn.success {
+  background: #10b981;
+  border-color: #10b981;
+  color: #052e24;
+}
+.btn.success:hover {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+}
+.btn.icon-only {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+.btn.home-btn {
+  color: #ffffff;
+}
+.btn.home-btn:hover {
+  background: #27f8ff;
+  border-color: #60a5fa;
+  color: #000000;
+}
+.btn.home-btn svg {
+  display: block;
+}
+
 input, select, textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -165,7 +223,7 @@ table td:last-child > div {
 
 .page {
   padding: 24px;
-  max-width: 1200px;
+  max-width: 1248px;
   margin: 0 auto;
   animation: pageFade 280ms ease;
 }
@@ -281,6 +339,7 @@ h1, h2, h3, h4 {
 
 .login-field {
   margin-bottom: 12px;
+  
 }
 
 .login-field input {
@@ -395,8 +454,18 @@ h1, h2, h3, h4 {
   body.receipt-print * {
     visibility: hidden;
   }
+  body.receipt-print #root {
+    display: none !important;
+  }
     
   body.receipt-print #print-area { display: none !important; }
+  body.receipt-print #receipt-print-clone,
+  body.receipt-print #receipt-print-clone * {
+    visibility: visible;
+  }
+  body.receipt-print #receipt-print-clone {
+    display: block !important;
+  }
   body.receipt-print #print-area.print-active,
   body.receipt-print #print-area.print-active * {
     visibility: visible;
@@ -412,18 +481,39 @@ h1, h2, h3, h4 {
     width: 104mm;
     min-height: auto;
   }
-  body.receipt-print.receipt-print-a4 #print-area.print-active {
+  body.receipt-print.receipt-print-3inch #receipt-print-clone {
     position: absolute;
+    left: 0;
+    top: 0;
+    padding: 4mm;
+    width: 104mm;
+    min-height: auto;
+    background: #fff;
+  }
+  body.receipt-print.receipt-print-a4 #print-area.print-active {
+    position: static !important;
     width: 100%;
     min-height: auto;
     
     margin: 0;
-    left: 0;
-    top: 0;
+    left: auto;
+    top: auto;
     padding: 0;
     overflow: visible;
     max-height: none !important;
     overflow: visible !important;
+  }
+  body.receipt-print.receipt-print-a4 #receipt-print-clone {
+    position: static !important;
+    width: 100%;
+    min-height: auto;
+    margin: 0;
+    left: auto;
+    top: auto;
+    padding: 0;
+    overflow: visible !important;
+    max-height: none !important;
+    background: #fff;
   }
 
   
@@ -445,6 +535,29 @@ h1, h2, h3, h4 {
   .receipt-template-a4 * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  /* Let A4 content flow onto next page naturally (especially long item tables) */
+  .receipt-template-a4 {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+  .inv-table {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+  .inv-table thead {
+    display: table-header-group;
+  }
+  .inv-table tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .inv-bottom-grid,
+  .inv-credit-note,
+  .inv-thanks,
+  .inv-signatures,
+  .inv-powered {
     page-break-inside: avoid;
     break-inside: avoid;
   }
@@ -766,8 +879,6 @@ margin-top: 12px;
 
 /* A4 one-page print tightening */
 @media print {
-  @page { size: A4; margin: 6mm; }
-
   body.receipt-print.receipt-print-a4 .receipt-template-a4 {
     width: 100%;
     max-width: none;
@@ -791,6 +902,83 @@ margin-top: 12px;
 }
  
 /* Shared top navigation */ 
-.top-nav { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; } 
+.top-nav-shell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.top-nav-shell.top-nav-shell--with-title {
+  display: block;
+}
+.top-nav-pagehead {
+  min-width: 260px;
+  flex: 1 1 320px;
+  margin-bottom: 0;
+}
+.top-nav-shell.top-nav-shell--with-title .top-nav-pagehead {
+  margin-top: 10px;
+}
+.top-nav-pagehead-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.15;
+}
+.top-nav-pagehead-sub {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+.top-nav-partner-logo img {
+  height: 18px;
+  width: auto;
+  display: block;
+  object-fit: contain;
+}
+.top-nav { margin-bottom: 50px; flex: 1 1 520px; min-width: 0; }
+.top-nav .top-nav-track {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.top-nav .top-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: visible;
+}
+.top-nav .top-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
 .top-nav .menu-wrap { position: relative; } 
 .top-nav .menu-panel { position: absolute; top: calc(100% + 6px); right: 0; display: grid; gap: 6px; padding: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); z-index: 50; min-width: 190px; }
+@media (max-width: 900px) {
+  .top-nav-shell { gap: 10px; }
+  .top-nav-pagehead-title { font-size: 20px; }
+  .top-nav .top-nav-track { align-items: center; }
+  .top-nav { width: 100%; flex-basis: 100%; }
+  .top-nav .top-nav-group {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+  .top-nav .top-nav-group::-webkit-scrollbar { height: 6px; }
+}

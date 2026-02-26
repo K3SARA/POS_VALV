@@ -437,7 +437,11 @@ const closeEdit = () => {
 
   return (
     <div className={printStockOnly || printPanelId ? "page print-stock-mode" : "page"}>
-      <TopNav onLogout={doLogout} />
+      <TopNav
+        onLogout={doLogout}
+        title="Sales Reports | Apex Logistics"
+        subtitle="Minimal control center for your POS"
+      />
       <style>{`
         @media print {
           .print-stock-mode * { visibility: hidden !important; }
@@ -873,6 +877,7 @@ const closeEdit = () => {
                   layoutMode={viewPrintLayoutMode}
                   saleId={viewSale.id}
                   dateText={new Date(viewSale.createdAt).toLocaleString()}
+                  customerId={viewSale.customerId || viewSale.customer?.id || ""}
                   customerName={viewSale.customerName || viewSale.customer?.name || ""}
                   customerPhone={viewSale.customerPhone || viewSale.customer?.phone || ""}
                   customerAddress={viewSale.customerAddress || viewSale.customer?.address || ""}
@@ -917,6 +922,7 @@ const closeEdit = () => {
     <div
       style={{
         background: "#fff",
+        color: "#111827",
         width: "min(900px, 100%)",
         borderRadius: 10,
         padding: 16,
@@ -924,7 +930,7 @@ const closeEdit = () => {
       onClick={(e) => e.stopPropagation()}
     >
       <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <h3>Edit Sale {editSale ? `#${editSale.id}` : ""}</h3>
+        <h3 style={{ color: "#111827" }}>Edit Sale {editSale ? `#${editSale.id}` : ""}</h3>
         <button onClick={closeEdit}>Close</button>
       </div>
 
@@ -948,7 +954,7 @@ const closeEdit = () => {
                   setEditDiscountType(e.target.value);
                   if (e.target.value === "none") setEditDiscountValue("");
                 }}
-                style={{ width: "100%", padding: 8, marginTop: 4 }}
+                style={{ width: "100%", padding: 8, marginTop: 4, background: "#fff", color: "#111827", border: "1px solid #d1d5db" }}
               >
                 <option value="none">None</option>
                 <option value="amount">Amount</option>
@@ -963,7 +969,7 @@ const closeEdit = () => {
                 value={editDiscountValue}
                 onChange={(e) => setEditDiscountValue(e.target.value)}
                 disabled={editDiscountType === "none"}
-                style={{ width: "100%", padding: 8, marginTop: 4 }}
+                style={{ width: "100%", padding: 8, marginTop: 4, background: "#fff", color: "#111827", border: "1px solid #d1d5db" }}
               />
             </div>
 
@@ -972,7 +978,7 @@ const closeEdit = () => {
               <select
                 value={editPaymentMethod}
                 onChange={(e) => setEditPaymentMethod(e.target.value)}
-                style={{ width: "100%", padding: 8, marginTop: 4 }}
+                style={{ width: "100%", padding: 8, marginTop: 4, background: "#fff", color: "#111827", border: "1px solid #d1d5db" }}
               >
                 <option value="cash">Cash</option>
                 <option value="credit">Credit</option>
@@ -983,7 +989,7 @@ const closeEdit = () => {
           </div>
 
           <div style={{ overflowX: "hidden" }}>
-            <table border="1" cellPadding="6" style={{ width: "100%", minWidth: 760, borderCollapse: "collapse" }}>
+            <table border="1" cellPadding="6" style={{ width: "100%", minWidth: 760, borderCollapse: "collapse", color: "#111827", background: "#fff" }}>
             <thead style={{ color: "#000" }}>
               <tr>
                 <th>Item</th>
@@ -1008,13 +1014,14 @@ const closeEdit = () => {
                       onChange={(e) =>
                         setEditQty(si.id, e.target.value)
                       }
-                      style={{ width: 80 }}
+                      style={{ width: 80, background: "#fff", color: "#111827", border: "1px solid #d1d5db" }}
                     />
                   </td>
                   <td>
                     <select
                       value={editMap[si.id]?.itemDiscountType || "none"}
                       onChange={(e) => setEditItemDiscountType(si.id, e.target.value)}
+                      style={{ background: "#fff", color: "#111827", border: "1px solid #d1d5db" }}
                     >
                       <option value="none">None</option>
                       <option value="amount">Amount</option>
@@ -1027,7 +1034,7 @@ const closeEdit = () => {
                       value={editMap[si.id]?.itemDiscountValue ?? ""}
                       onChange={(e) => setEditItemDiscountValue(si.id, e.target.value)}
                       disabled={(editMap[si.id]?.itemDiscountType || "none") === "none"}
-                      style={{ width: 90 }}
+                      style={{ width: 90, background: "#fff", color: "#111827", border: "1px solid #d1d5db" }}
                     />
                   </td>
                 </tr>

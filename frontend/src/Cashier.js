@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "./api";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import TopNav from "./TopNav";
 import ReceiptPrint from "./ReceiptPrint";
 import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
+import { formatNumber } from "./utils/format";
 
 const CHEQUE_DUE_PREFIX = "CHEQUE_DUE:";
 
@@ -30,6 +31,7 @@ export default function Cashier({ onLogout }) {
   const requiresStartDay = role === "cashier";
 
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Discount + Payment
   const [discountType, setDiscountType] = useState("none"); // none | amount | percent
@@ -81,6 +83,9 @@ export default function Cashier({ onLogout }) {
   const [dayRoute, setDayRoute] = useState("");
   const [routes, setRoutes] = useState([]);
   const [routeInput, setRouteInput] = useState("");
+  const [pendingSales, setPendingSales] = useState([]);
+  const [pendingSalesLoading, setPendingSalesLoading] = useState(false);
+  const [selectedPendingSaleId, setSelectedPendingSaleId] = useState("");
 
 
   // Customer (required)
@@ -436,6 +441,86 @@ export default function Cashier({ onLogout }) {
     setPrintPaperPrompt(true);
   };
 
+  const loadPendingSales = useCallback(async () => {
+    try {
+      setPendingSalesLoading(true);
+      const list = await apiFetch("/pending-sales");
+      const rows = Array.isArray(list) ? list : [];
+      setPendingSales(rows.filter((r) => String(r?.pending?.status || "pending") === "pending"));
+    } catch {
+      setPendingSales([]);
+    } finally {
+      setPendingSalesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPendingSales();
+  }, [loadPendingSales]);
+
+  const applyPendingPayloadToForm = useCallback((payload, pendingId = "", sourceProducts = null) => {
+    const source = Array.isArray(sourceProducts) ? sourceProducts : (allItems || []);
+    const productMap = new Map(source.map((p) => [String(p.barcode || ""), p]));
+    const nextCart = (Array.isArray(payload?.items) ? payload.items : [])
+      .map((it) => {
+        const code = String(it?.barcode || "").trim();
+        if (!code) return null;
+        const p = productMap.get(code) || {};
+        return {
+          barcode: code,
+          name: String(p.name || it?.name || code),
+          price: Number(p.billingPrice ?? p.price ?? it?.price ?? 0) || 0,
+          stock: Number(p.stock ?? it?.stock ?? 0) || 0,
+          qty: Math.max(1, Number(it?.qty || 0) || 1),
+          freeQty: Math.max(0, Number(it?.freeQty || 0) || 0),
+          itemDiscountType: String(it?.itemDiscountType || "none"),
+          itemDiscountValue: Number(it?.itemDiscountValue || 0) || 0,
+        };
+      })
+      .filter(Boolean);
+
+    const customer = payload?.customer || {};
+    setCart(nextCart);
+    setCustomerId("");
+    setCustomerName(String(customer?.name || ""));
+    setCustomerPhone(String(customer?.phone || ""));
+    setCustomerAddress(String(customer?.address || ""));
+    setDiscountType(String(payload?.discountType || "none"));
+    setDiscountValue(String(payload?.discountValue ?? ""));
+    setPaymentMethod(String(payload?.paymentMethod || "cash"));
+    setCashReceived(String(payload?.cashReceived ?? ""));
+    setChequeDate(String(payload?.chequeDate || ""));
+    setSelectedPendingSaleId(String(pendingId || ""));
+    setMsg(`Loaded pending sale request #${pendingId}`);
+  }, [allItems]);
+
+  const loadPendingSaleForEdit = useCallback(async (id) => {
+    if (!id) return;
+    try {
+      setLoading(true);
+      setMsg("");
+      const row = await apiFetch(`/pending-sales/${id}`);
+      const payload = row?.pending?.payload || row?.data?.payload || row?.payload;
+      if (!payload) throw new Error("Pending sale payload missing");
+      const productsForPending = await apiFetch("/products");
+      const productList = Array.isArray(productsForPending) ? productsForPending : (productsForPending?.items || []);
+      if (Array.isArray(productList) && productList.length) setAllItems(productList);
+      applyPendingPayloadToForm(payload, id, productList);
+      navigate(`/cashier?pendingId=${id}`, { replace: true });
+    } catch (e) {
+      setMsg("Error: " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [applyPendingPayloadToForm, navigate]);
+
+  useEffect(() => {
+    const pendingId = new URLSearchParams(location.search).get("pendingId");
+    if (pendingId && pendingId !== selectedPendingSaleId) {
+      loadPendingSaleForEdit(pendingId);
+    }
+  }, [location.search, selectedPendingSaleId, loadPendingSaleForEdit]);
+
   const confirmPrint = (mode) => {
     setPrintLayoutMode(mode);
     setPrintPaperPrompt(false);
@@ -559,6 +644,10 @@ export default function Cashier({ onLogout }) {
 
     setShowCustomerDropdown(false);
     setCustomerResults([]);
+    setSelectedPendingSaleId("");
+    if (location.pathname === "/cashier" && location.search.includes("pendingId=")) {
+      navigate("/cashier", { replace: true });
+    }
   };
 
   const saveDraft = async () => {
@@ -757,12 +846,31 @@ export default function Cashier({ onLogout }) {
       const discountSnapshot = discountAmount;
       const grandTotalSnapshot = grandTotal;
       const balanceSnapshot = balance;
+      if (role === "cashier") {
+        const isUpdate = Boolean(selectedPendingSaleId);
+        await apiFetch(isUpdate ? `/pending-sales/${selectedPendingSaleId}` : "/pending-sales", {
+          method: isUpdate ? "PUT" : "POST",
+          body: JSON.stringify(payload),
+        });
+        setMsg(isUpdate ? "Pending sale request updated" : "Sale request sent for admin approval");
+        clearCart();
+        loadPendingSales();
+        return;
+      }
+
       const sale = await apiFetch("/sales", {
         method: "POST",
         body: JSON.stringify(payload),
       });
 
-      setMsg("Sale completed!");
+      if (selectedPendingSaleId) {
+        await apiFetch(`/pending-sales/${selectedPendingSaleId}/approve`, {
+          method: "POST",
+          body: JSON.stringify({ saleId: sale?.sale?.id || sale?.id || null }),
+        });
+      }
+
+      setMsg(selectedPendingSaleId ? "Pending sale approved and completed!" : "Sale completed!");
       const saleId =
         sale?.sale?.id ||
         sale?.id ||
@@ -789,6 +897,7 @@ export default function Cashier({ onLogout }) {
       });
       clearCart();
       loadAllCustomers();
+      loadPendingSales();
     } catch (e) {
       setMsg("Error: " + e.message);
     } finally {
@@ -798,22 +907,11 @@ export default function Cashier({ onLogout }) {
 
   return (
     <div className="page">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0 }}>Cashier</h2>
-        {role === "admin" && (
-  <button
-    className="btn ghost"
-    onClick={() => navigate("/admin")}
-  >
-    Go Back
-  </button>
-)}
-
-<button className="btn" onClick={onLogout} style={{ background: "#dc2626", color: "#fff", border: "1px solid #b91c1c" }}>Logout</button>
-
-      </div>
-
-      <TopNav onLogout={onLogout} />
+      <TopNav
+        onLogout={onLogout}
+        title="Cashier | Apex Logistics"
+        subtitle="Minimal control center for your POS"
+      />
 
       {requiresStartDay && (
         <div
@@ -960,6 +1058,46 @@ export default function Cashier({ onLogout }) {
                 ))}
             </div>
           )}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+          <button onClick={loadPendingSales} disabled={pendingSalesLoading || loading} style={{ padding: 8 }}>
+            {pendingSalesLoading ? "Loading Pending..." : "Refresh Pending"}
+          </button>
+          <select
+            value={selectedPendingSaleId}
+            onChange={(e) => {
+              const id = e.target.value;
+              if (id) loadPendingSaleForEdit(id);
+            }}
+            style={{ padding: 8, minWidth: 280 }}
+          >
+            <option value="">Load Pending Request...</option>
+            {pendingSales.map((r) => {
+              const payload = r?.pending?.payload || {};
+              const itemCount = (payload?.items || []).reduce(
+                (sum, it) => sum + Number(it?.qty || 0) + Number(it?.freeQty || 0),
+                0
+              );
+              return (
+                <option key={r.id} value={String(r.id)}>
+                  {`#${r.id} | ${payload?.customer?.name || "-"} | ${formatNumber(itemCount)} items`}
+                </option>
+              );
+            })}
+          </select>
+          {selectedPendingSaleId ? (
+            <button
+              onClick={() => {
+                setSelectedPendingSaleId("");
+                navigate("/cashier", { replace: true });
+                setMsg("Pending request edit cleared");
+              }}
+              disabled={loading}
+            >
+              Clear Pending Edit
+            </button>
+          ) : null}
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -1233,19 +1371,19 @@ export default function Cashier({ onLogout }) {
 
         <div style={{ marginTop: 12, lineHeight: 1.8 }}>
           <div>
-            Subtotal: <b>{subtotal}</b>
+            Subtotal: <b>{formatNumber(subtotal)}</b>
           </div>
           <div>
-            Discount: <b>{discountAmount}</b>
+            Discount: <b>{formatNumber(discountAmount)}</b>
           </div>
           <div>
-            Grand Total: <b>{grandTotal}</b>
+            Grand Total: <b>{formatNumber(grandTotal)}</b>
           </div>
 
           {paymentMethod === "cash" && (
             <div>
               Balance/Change:{" "}
-              <b style={{ color: balance < 0 ? "crimson" : "green" }}>{balance}</b>
+              <b style={{ color: balance < 0 ? "crimson" : "green" }}>{formatNumber(balance)}</b>
               {balance < 0 && <span style={{ marginLeft: 8 }}>(Not enough cash)</span>}
             </div>
           )}
@@ -1382,69 +1520,72 @@ export default function Cashier({ onLogout }) {
           </tbody>
         </table>
 
-        <h3 style={{ marginTop: 15 }}>Subtotal: {subtotal}</h3>
+        <h3 style={{ marginTop: 15 }}>Subtotal: {formatNumber(subtotal)}</h3>
 
-        <button
-          onClick={completeSale}
-          disabled={
-            loading ||
-            cart.length === 0 ||
-            (!!customerPhone && digitsOnly(customerPhone).length !== 10) ||
-            (requiresStartDay && !dayStarted)
-          }
-          style={{ padding: 12, fontSize: 16 }}
-        >
-          Complete Sale
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+          <button
+            onClick={completeSale}
+            disabled={
+              loading ||
+              cart.length === 0 ||
+              (!!customerPhone && digitsOnly(customerPhone).length !== 10) ||
+              (requiresStartDay && !dayStarted)
+            }
+            style={{ padding: 12, fontSize: 16 }}
+          >
+            {role === "cashier"
+              ? (selectedPendingSaleId ? "Update Request" : "Request Sale")
+              : (selectedPendingSaleId ? "Approve & Complete" : "Complete Sale")}
+          </button>
+
+          <button
+            onClick={() =>
+              openPrintPreview({
+                saleId: "DRAFT",
+                dateText: new Date().toLocaleString(),
+                items: cart,
+                subtotal,
+                discount: discountAmount,
+                grandTotal,
+                paymentMethod,
+                cashReceived,
+                balance,
+                customerName,
+                customerPhone,
+                customerAddress,
+              })
+            }
+            disabled={cart.length === 0}
+            style={{ padding: 12, fontSize: 16 }}
+          >
+            Print Bill
+          </button>
+
+          <button
+            onClick={() =>
+              openPrintPreview({
+                saleId: "TRIAL-001",
+                dateText: new Date().toLocaleString(),
+                items: cart.length
+                  ? cart
+                  : [{ barcode: "trial", name: "Trial Item", qty: 1, price: 150 }],
+                subtotal: subtotal || 150,
+                discount: discountAmount || 0,
+                grandTotal: grandTotal || 150,
+                paymentMethod,
+                cashReceived: cashReceived || 150,
+                balance: balance || 0,
+                customerName,
+                customerPhone,
+                customerAddress,
+              })
+            }
+            style={{ padding: 12, fontSize: 16 }}
+          >
+            Trial Print
+          </button>
+        </div>
       </div>
-
-      <button
-        onClick={() =>
-          openPrintPreview({
-            saleId: "DRAFT",
-            dateText: new Date().toLocaleString(),
-            items: cart,
-            subtotal,
-            discount: discountAmount,
-            grandTotal,
-            paymentMethod,
-            cashReceived,
-            balance,
-            customerName,
-            customerPhone,
-            customerAddress,
-          })
-        }
-        disabled={cart.length === 0}
-        style={{ padding: 12, fontSize: 16, marginLeft: 10 }}
-      >
-        Print Bill
-      </button>
-
-      {/* Trial print (kept) */}
-      <button
-        onClick={() =>
-          openPrintPreview({
-            saleId: "TRIAL-001",
-            dateText: new Date().toLocaleString(),
-            items: cart.length
-              ? cart
-              : [{ barcode: "trial", name: "Trial Item", qty: 1, price: 150 }],
-            subtotal: subtotal || 150,
-            discount: discountAmount || 0,
-            grandTotal: grandTotal || 150,
-            paymentMethod,
-            cashReceived: cashReceived || 150,
-            balance: balance || 0,
-            customerName,
-            customerPhone,
-            customerAddress,
-          })
-        }
-        style={{ padding: 12, fontSize: 16, marginLeft: 10 }}
-      >
-        Trial Print
-      </button>
 
       {showPrint && (
         <div

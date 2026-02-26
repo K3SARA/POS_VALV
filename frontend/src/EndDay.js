@@ -69,12 +69,13 @@ export default function EndDay() {
 
   return (
     <div className="page">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <h2 style={{ margin: 0 }}>End Day (Daily Close)</h2>
-        <TopNav onLogout={doLogout} />
-        <div style={{ marginTop: 10 }}>
-          <button onClick={load} disabled={loading} style={{ padding: 10 }}>Refresh</button>
-        </div>
+      <TopNav
+        onLogout={doLogout}
+        title="End Day | Apex Logistics"
+        subtitle="Minimal control center for your POS"
+      />
+      <div style={{ marginTop: 10 }}>
+        <button onClick={load} disabled={loading} style={{ padding: 10 }}>Refresh</button>
       </div>
 
       {msg && <p style={{ marginTop: 12 }}>{msg}</p>}

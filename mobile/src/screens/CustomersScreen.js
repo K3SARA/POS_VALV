@@ -63,7 +63,6 @@ export default function CustomersScreen() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [customerIdInput, setCustomerIdInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
   const [addressInput, setAddressInput] = useState("");
@@ -99,18 +98,12 @@ export default function CustomersScreen() {
   }, [loadCustomers]);
 
   function resetCustomerForm() {
-    setCustomerIdInput("");
     setNameInput("");
     setPhoneInput("");
     setAddressInput("");
   }
 
   async function onAddCustomer() {
-    const customerId = String(customerIdInput || "").trim();
-    if (!customerId) {
-      setError("Customer ID is required");
-      return;
-    }
     const name = String(nameInput || "").trim();
     if (!name) {
       setError("Customer name is required");
@@ -132,7 +125,6 @@ export default function CustomersScreen() {
       await apiFetch("/customers", {
         method: "POST",
         body: JSON.stringify({
-          customerId,
           name,
           phone: phoneDigits,
           address: addressInput ? String(addressInput).trim() : null,
@@ -251,13 +243,6 @@ export default function CustomersScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Add Customer</Text>
             <ScrollView style={{ maxHeight: 320 }}>
-              <TextInput
-                style={styles.input}
-                value={customerIdInput}
-                onChangeText={setCustomerIdInput}
-                placeholder="Customer ID *"
-                placeholderTextColor={placeholderColor}
-              />
               <TextInput
                 style={styles.input}
                 value={nameInput}

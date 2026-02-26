@@ -13,6 +13,7 @@ import CustomerWiseReport from "./CustomerWiseReport";
 import Stock from "./Stock";
 import ReturnedStock from "./ReturnedStock";
 import Customers from "./Customers";
+import PendingSales from "./PendingSales";
 
 
 
@@ -111,6 +112,14 @@ export default function App() {
           element={
             <PrivateRoute allow="admin">
               <Customers />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/pending-sales"
+          element={
+            <PrivateRoute allow="admin">
+              <PendingSales />
             </PrivateRoute>
           }
         />

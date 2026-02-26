@@ -11,6 +11,17 @@ export function applyReceiptPrint(mode = "3inch") {
   const activePrintArea = printAreas.find((el) => el.offsetParent !== null) || printAreas[0];
   if (activePrintArea) activePrintArea.classList.add("print-active");
 
+  const existingClone = document.getElementById("receipt-print-clone");
+  if (existingClone && existingClone.parentNode) {
+    existingClone.parentNode.removeChild(existingClone);
+  }
+  if (activePrintArea) {
+    const clone = activePrintArea.cloneNode(true);
+    clone.id = "receipt-print-clone";
+    clone.classList.add("print-active");
+    document.body.appendChild(clone);
+  }
+
   let style = document.getElementById("receipt-print-style");
   if (!style) {
     style = document.createElement("style");
@@ -32,8 +43,13 @@ export function cleanupReceiptPrint() {
 
   const style = document.getElementById("receipt-print-style");
   if (style && style.parentNode) {
-  const printAreas = Array.from(document.querySelectorAll("#print-area"));
-  printAreas.forEach((el) => el.classList.remove("print-active"));
+    const printAreas = Array.from(document.querySelectorAll("#print-area"));
+    printAreas.forEach((el) => el.classList.remove("print-active"));
+
+    const clone = document.getElementById("receipt-print-clone");
+    if (clone && clone.parentNode) {
+      clone.parentNode.removeChild(clone);
+    }
 
     style.parentNode.removeChild(style);
   }

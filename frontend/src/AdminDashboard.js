@@ -478,7 +478,7 @@ const createCustomer = async (e) => {
             radial-gradient(900px 400px at 90% -20%, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0) 55%),
             var(--bg);
           min-height: 100vh;
-          padding: 24px 20px 40px;
+          padding: 24px 24px 40px;
         }
 
         .admin-content {
@@ -727,6 +727,17 @@ const createCustomer = async (e) => {
         tbody tr:hover td {
           color: #000000;
         }
+        tbody tr:hover .btn.ghost {
+          background: var(--panel);
+          border-color: var(--border);
+          color: var(--text);
+        }
+        tbody tr:hover .btn.danger:disabled  {
+          background: var(--panel);
+          border-color: var(--border);
+          color: var(--text);
+          opacity: 1;
+        }
 
         .reports-wrap {
           position: relative;
@@ -779,18 +790,12 @@ const createCustomer = async (e) => {
         }
       `}</style>
       <div className="admin-content">
-        <div className="topbar">
-          <div className="title">
-            <h2>Admin Dashboard | Apex Logistics</h2>
-            <div className="subtitle-row">
-              <span>Minimal control center for your POS</span>
-              <div className="partner-inline">
-                <img src="/valvoline.png" alt="Valvoline" />
-              </div>
-            </div>
-          </div>
-          <TopNav onLogout={onLogout} />
-        </div>
+        <TopNav
+          onLogout={onLogout}
+          title="Admin Dashboard | Apex Logistics"
+          subtitle="Minimal control center for your POS"
+          showPartnerLogo={true}
+        />
 
         {msg && <div className="banner">{msg}</div>}
 
@@ -941,7 +946,7 @@ const createCustomer = async (e) => {
                   <div className="panel" style={{ padding: 12 }}>
                     <div style={{ fontWeight: 600, marginBottom: 8 }}>Top Products</div>
                     <div style={{ display: "grid", gap: 8 }}>
-                      {(analytics?.topProducts || []).map((p) => (
+                      {(analytics?.topProducts || []).slice(0, 5).map((p) => (
                         <div key={p.id} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                           <span style={{ fontSize: 13 }}>{p.name}</span>
                           <span style={{ fontSize: 12, color: "var(--muted)" }}>{p.qty} sold</span>
@@ -1182,14 +1187,6 @@ const createCustomer = async (e) => {
               </button>
             </div>
             <form className="form" onSubmit={createCustomer} autoComplete="off">
-              <div className="input-group">
-                <label>Customer ID</label>
-                <input
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                  placeholder="Optional custom ID"
-                />
-              </div>
               <div className="input-group">
                 <label>Name</label>
                 <input

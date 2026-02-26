@@ -62,7 +62,7 @@ export default function ReturnedStock() {
             radial-gradient(900px 400px at 90% -20%, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0) 55%),
             var(--bg);
           min-height: 100vh;
-          padding: 24px 20px 40px;
+          padding: 24px 24px 40px;
         }
 
         .admin-content {
@@ -164,13 +164,11 @@ export default function ReturnedStock() {
       `}</style>
 
       <div className="admin-content">
-        <div className="topbar">
-          <div className="title">
-            <h2>Returned Stock</h2>
-            <span>Items returned from sales</span>
-          </div>
-          <TopNav onLogout={doLogout} />
-        </div>
+        <TopNav
+          onLogout={doLogout}
+          title="Returned Stock | Apex Logistics"
+          subtitle="Items returned from sales"
+        />
 
         {msg && <div className="banner">{msg}</div>}
 

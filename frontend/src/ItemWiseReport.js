@@ -67,12 +67,20 @@ export default function ItemWiseReport() {
   const totalSales = rows.reduce((a, r) => a + Number(r.total || 0), 0);
 
   return (
-    <div style={{ padding: 18 }}>
-      <TopNav onLogout={doLogout} />
-      <h2 style={{ marginTop: 12 }}>Item-wise Report</h2>
+    <div className="page">
+      <TopNav
+        onLogout={doLogout}
+        title="Item-wise Report | Apex Logistics"
+        subtitle="Minimal control center for your POS"
+      />
 
       <div className="panel" style={{ marginTop: 12, padding: 14 }}>
-        <h3 style={{ marginTop: 0 }}>Date Range</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <h3 style={{ margin: 0 }}>Date Range</h3>
+          <button className="btn secondary" type="button" onClick={load} disabled={loading}>
+            {loading ? "Loading..." : "Load"}
+          </button>
+        </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
           <div>
             <div style={{ fontSize: 12, color: "#64748b" }}>From</div>
@@ -82,14 +90,11 @@ export default function ItemWiseReport() {
             <div style={{ fontSize: 12, color: "#64748b" }}>To</div>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          <button className="btn" type="button" onClick={load} disabled={loading}>
-            Load
-          </button>
         </div>
       </div>
 
       <div className="panel" style={{ marginTop: 12, padding: 14 }}>
-        <h3 style={{ marginTop: 0 }}>Summary</h3>
+        <h3 style={{ margin: 0 }}>Summary</h3>
         <div style={{ lineHeight: 1.9 }}>
           <div>Total items sold (qty): <b>{totalQty}</b></div>
           <div>Total sales: <b>Rs {formatNumber(totalSales)}</b></div>
@@ -97,7 +102,12 @@ export default function ItemWiseReport() {
       </div>
 
       <div className="panel" style={{ marginTop: 12, padding: 14 }}>
-        <h3 style={{ marginTop: 0 }}>Items</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <h3 style={{ margin: 0 }}>Items</h3>
+          <button className="btn secondary" type="button" onClick={load} disabled={loading}>
+            Refresh
+          </button>
+        </div>
         {msg ? <div style={{ color: "crimson", marginBottom: 10 }}>{msg}</div> : null}
 
         <table style={{ width: "100%", borderCollapse: "collapse" }}>

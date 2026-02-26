@@ -221,6 +221,10 @@ export default function CashierScreen() {
   const [activeTouchRow, setActiveTouchRow] = useState("");
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [lastReceipt, setLastReceipt] = useState(null);
+  const [pendingSales, setPendingSales] = useState([]);
+  const [pendingSalesLoading, setPendingSalesLoading] = useState(false);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [selectedPendingSaleId, setSelectedPendingSaleId] = useState(null);
   const [dayStarted, setDayStarted] = useState(false);
   const [dayRoute, setDayRoute] = useState("");
   const [showRouteModal, setShowRouteModal] = useState(false);
@@ -257,14 +261,31 @@ export default function CashierScreen() {
     }
   }, []);
 
+  const loadPendingSales = useCallback(async () => {
+    try {
+      setPendingSalesLoading(true);
+      const data = await apiFetch("/pending-sales");
+      const list = Array.isArray(data) ? data : [];
+      setPendingSales(list.filter((r) => String(r?.pending?.status || "pending") === "pending"));
+    } catch {
+      setPendingSales([]);
+    } finally {
+      setPendingSalesLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     loadData();
   }, [loadData]);
+  React.useEffect(() => {
+    loadPendingSales();
+  }, [loadPendingSales]);
 
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+      loadPendingSales();
+    }, [loadData, loadPendingSales])
   );
 
   const loadDayStatus = useCallback(async () => {
@@ -552,6 +573,64 @@ export default function CashierScreen() {
     closeAllDropdowns();
   }
 
+  function clearCashierForm() {
+    setCart([]);
+    setBarcode("");
+    setCustomerName("");
+    setCustomerPhone("");
+    setCustomerAddress("");
+    setSelectedCustomerId(null);
+    setSelectedItemRow("");
+    setSelectedCustomerRow("");
+    setActiveTouchRow("");
+    setShowItemDropdown(false);
+    setShowCustomerNameDropdown(false);
+    setShowCustomerPhoneDropdown(false);
+    setDiscountType("none");
+    setDiscountValue("");
+    setPaymentMethod("cash");
+    setCashReceived("");
+    setChequeDate("");
+    setSelectedPendingSaleId(null);
+  }
+
+  function applyPendingSaleToForm(row) {
+    const payload = row?.pending?.payload || {};
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    const productMap = new Map((products || []).map((p) => [String(p.barcode || ""), p]));
+    const nextCart = items
+      .map((it) => {
+        const code = String(it?.barcode || "").trim();
+        if (!code) return null;
+        const p = productMap.get(code) || {};
+        return {
+          ...p,
+          barcode: code,
+          name: p?.name || it?.name || code,
+          price: Number(p?.price ?? p?.billingPrice ?? it?.price ?? 0) || 0,
+          stock: Number(p?.stock ?? it?.stock ?? 0) || 0,
+          qty: Math.max(1, Number(it?.qty || 0) || 1),
+          freeQty: Math.max(0, Number(it?.freeQty || 0) || 0),
+        };
+      })
+      .filter(Boolean);
+    const customer = payload.customer || {};
+    setCart(nextCart);
+    setCustomerName(String(customer?.name || ""));
+    setCustomerPhone(String(customer?.phone || ""));
+    setCustomerAddress(String(customer?.address || ""));
+    setSelectedCustomerId(customer?.id || null);
+    setDiscountType(String(payload.discountType || "none"));
+    setDiscountValue(String(payload.discountValue ?? ""));
+    setPaymentMethod(String(payload.paymentMethod || "cash"));
+    setCashReceived(String(payload.cashReceived ?? ""));
+    setChequeDate(String(payload.chequeDate || ""));
+    setSelectedPendingSaleId(row?.id || null);
+    setShowPendingModal(false);
+    setMessage(`Loaded pending request #${row?.id || ""}`);
+    setError("");
+  }
+
   async function updateCustomerOutstanding(newOutstanding, opts = {}) {
     const targetCustomerId = opts.customerId || selectedCustomerId;
     if (!targetCustomerId) return;
@@ -616,16 +695,38 @@ export default function CashierScreen() {
 
       if (customerName.trim()) {
         payload.customer = {
+          ...(selectedCustomerId ? { id: selectedCustomerId } : {}),
           name: customerName.trim(),
           phone: customerPhone.trim(),
           address: customerAddress.trim(),
         };
       }
 
+      if (role === "cashier") {
+        const isUpdate = Boolean(selectedPendingSaleId);
+        await apiFetch(isUpdate ? `/pending-sales/${selectedPendingSaleId}` : "/pending-sales", {
+          method: isUpdate ? "PUT" : "POST",
+          body: JSON.stringify(payload),
+        });
+        clearCashierForm();
+        setMessage(isUpdate ? "Pending sale request updated" : "Sale request sent for admin approval");
+        await loadData();
+        await loadPendingSales();
+        return;
+      }
+
       const saleResponse = await apiFetch("/sales", {
         method: "POST",
         body: JSON.stringify(payload),
       });
+
+      const approvingPending = Boolean(selectedPendingSaleId);
+      if (selectedPendingSaleId) {
+        await apiFetch(`/pending-sales/${selectedPendingSaleId}/approve`, {
+          method: "POST",
+          body: JSON.stringify({ saleId: saleResponse?.sale?.id || null }),
+        });
+      }
 
       await updateCustomerOutstanding(customerOutstandingAfterSale, {
         customerId: saleResponse?.sale?.customerId || selectedCustomerId || null,
@@ -651,25 +752,10 @@ export default function CashierScreen() {
       });
       setShowPrintPreview(true);
 
-      setCart([]);
-      setBarcode("");
-      setCustomerName("");
-      setCustomerPhone("");
-      setCustomerAddress("");
-      setSelectedCustomerId(null);
-      setSelectedItemRow("");
-      setSelectedCustomerRow("");
-      setActiveTouchRow("");
-      setShowItemDropdown(false);
-      setShowCustomerNameDropdown(false);
-      setShowCustomerPhoneDropdown(false);
-      setDiscountType("none");
-      setDiscountValue("");
-      setPaymentMethod("cash");
-      setCashReceived("");
-      setChequeDate("");
-      setMessage("Sale completed");
+      clearCashierForm();
+      setMessage(approvingPending ? "Pending sale approved and completed" : "Sale completed");
       await loadData();
+      await loadPendingSales();
     } catch (e) {
       setError(e.message || "Failed to complete sale");
     } finally {
@@ -739,6 +825,27 @@ export default function CashierScreen() {
         {loading ? <ActivityIndicator style={{ marginBottom: 10 }} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {message ? <Text style={styles.success}>{message}</Text> : null}
+        <View style={styles.pendingToolbar}>
+          <Pressable
+            style={[styles.smallBtn, (!canUseCashierActions && role === "cashier") && styles.btnDisabled]}
+            onPress={() => setShowPendingModal(true)}
+          >
+            <Text style={styles.smallBtnText}>
+              Pending {pendingSalesLoading ? "..." : `(${pendingSales.length})`}
+            </Text>
+          </Pressable>
+          {selectedPendingSaleId ? (
+            <Pressable
+              style={[styles.smallBtn, { backgroundColor: "#475569" }]}
+              onPress={() => {
+                setSelectedPendingSaleId(null);
+                setMessage("Pending edit cleared");
+              }}
+            >
+              <Text style={styles.smallBtnText}>Clear Pending Edit</Text>
+            </Pressable>
+          ) : null}
+        </View>
 
         <View style={[styles.panel, { zIndex: 20 }]}>
           <PanelTitle icon="barcode-outline" label="Add Item" />
@@ -1059,10 +1166,61 @@ export default function CashierScreen() {
             onPress={completeSale}
             disabled={!canUseCashierActions}
           >
-            <Text style={styles.completeText}>Complete Sale</Text>
+            <Text style={styles.completeText}>
+              {role === "cashier"
+                ? (selectedPendingSaleId ? "Update Request" : "Request Sale")
+                : (selectedPendingSaleId ? "Approve & Complete" : "Complete Sale")}
+            </Text>
           </Pressable>
         </View>
       </ScrollView>
+
+      <Modal visible={showPendingModal} transparent animationType="fade" onRequestClose={() => setShowPendingModal(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.pendingModalHeader}>
+              <Text style={styles.modalTitle}>Pending Sales</Text>
+              <Pressable style={styles.closeBtn} onPress={() => setShowPendingModal(false)}>
+                <Text style={styles.closeBtnText}>Close</Text>
+              </Pressable>
+            </View>
+            <Pressable style={[styles.action, { marginBottom: 10 }]} onPress={loadPendingSales}>
+              <Text style={styles.actionText}>{pendingSalesLoading ? "Refreshing..." : "Refresh Pending"}</Text>
+            </Pressable>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {pendingSales.length === 0 ? (
+                <Text style={styles.meta}>No pending sales</Text>
+              ) : (
+                pendingSales.map((row) => {
+                  const payload = row?.pending?.payload || {};
+                  const itemCount = (payload?.items || []).reduce(
+                    (sum, it) => sum + Number(it?.qty || 0) + Number(it?.freeQty || 0),
+                    0
+                  );
+                  const selected = Number(selectedPendingSaleId || 0) === Number(row.id || 0);
+                  return (
+                    <Pressable
+                      key={String(row.id)}
+                      style={[styles.pendingRow, selected && styles.pendingRowSelected]}
+                      onPress={() => applyPendingSaleToForm(row)}
+                    >
+                      <Text style={styles.pendingRowTitle}>
+                        #{row.id} {payload?.customer?.name ? `| ${payload.customer.name}` : ""}
+                      </Text>
+                      <Text style={styles.pendingRowMeta}>
+                        {String(payload?.paymentMethod || "cash")} | Items: {formatNumber(itemCount)}
+                      </Text>
+                      <Text style={styles.pendingRowMeta}>
+                        {row?.updatedAt ? new Date(row.updatedAt).toLocaleString() : ""}
+                      </Text>
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={requiresStartDay && showRouteModal} transparent animationType="fade" onRequestClose={() => {}}>
         <View style={styles.modalBackdrop}>
@@ -1155,6 +1313,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontWeight: "600",
   },
+  pendingToolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom: 8,
+  },
   chequeAlert: {
     backgroundColor: "#fef3c7",
     borderColor: "#fcd34d",
@@ -1227,6 +1392,34 @@ const styles = StyleSheet.create({
   actionText: {
     color: "#fff",
     fontWeight: "700",
+  },
+  pendingModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+    gap: 8,
+  },
+  pendingRow: {
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
+    backgroundColor: "#fff",
+  },
+  pendingRowSelected: {
+    borderColor: "#2563eb",
+    backgroundColor: "#eff6ff",
+  },
+  pendingRowTitle: {
+    color: "#111827",
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  pendingRowMeta: {
+    color: "#4b5563",
+    fontSize: 12,
   },
   dateInputBtn: {
     flexDirection: "row",

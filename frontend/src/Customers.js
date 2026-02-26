@@ -16,6 +16,8 @@ export default function Customers() {
   const [sortDir, setSortDir] = useState("desc");
   const [viewRow, setViewRow] = useState(null);
   const [editRow, setEditRow] = useState(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: "", phone: "", address: "" });
   const [editForm, setEditForm] = useState({ customerId: "", name: "", phone: "", address: "" });
   const [searchQuery, setSearchQuery] = useState("");
   const [showReportsMenu, setShowReportsMenu] = useState(false);
@@ -225,6 +227,9 @@ export default function Customers() {
     });
   };
 
+  const digitsOnly = (v) => String(v || "").replace(/\D/g, "");
+  const nameRegex = /^[A-Za-z0-9 .,&()'/-]{2,}$/;
+
   const saveEdit = async () => {
     if (!editRow) return;
     try {
@@ -239,6 +244,41 @@ export default function Customers() {
         }),
       });
       setEditRow(null);
+      await loadCustomers();
+    } catch (e) {
+      setMsg("Error: " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveCreate = async () => {
+    const name = String(createForm.name || "").trim();
+    const phone = digitsOnly(createForm.phone);
+    const address = String(createForm.address || "").trim();
+
+    if (!nameRegex.test(name)) {
+      setMsg("Error: Customer name is invalid");
+      return;
+    }
+    if (phone.length !== 10) {
+      setMsg("Error: Phone must be exactly 10 digits");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setMsg("");
+      await apiFetch("/customers", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          phone,
+          address: address || null,
+        }),
+      });
+      setCreateOpen(false);
+      setCreateForm({ name: "", phone: "", address: "" });
       await loadCustomers();
     } catch (e) {
       setMsg("Error: " + e.message);
@@ -265,7 +305,7 @@ export default function Customers() {
   return (
     <div className="admin-shell">
       <style>{`
-        .admin-shell { min-height: 100vh; padding: 24px 20px 40px; color: var(--text); background: var(--bg); }
+        .admin-shell { min-height: 100vh; padding: 24px 24px 40px; color: var(--text); background: var(--bg); }
         .admin-content { max-width: 1200px; margin: 0 auto; }
         .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
         .btn { border: none; border-radius: 10px; padding: 9px 14px; font-weight: 600; cursor: pointer; background: var(--accent); color: var(--bg); }
@@ -285,15 +325,23 @@ export default function Customers() {
       `}</style>
 
       <div className="admin-content">
-        <h2 style={{ marginTop: 0 }}>Customers</h2>
-        <TopNav onLogout={doLogout} />
+        <TopNav
+          onLogout={doLogout}
+          title="Customers | Apex Logistics"
+          subtitle="Minimal control center for your POS"
+        />
 
         {msg && <div className="banner">{msg}</div>}
 
         <div className="panel">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <div>
-              <h3 style={{ margin: 0 }}>Customer Table</h3>
+              <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <span>Customer Table</span>
+                <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 500 }}>
+                  ({formatNumber(rows.length)} customers)
+                </span>
+              </h3>
               <span style={{ color: "var(--muted)", fontSize: 12 }}>Click headers to sort ascending/descending</span>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -302,6 +350,9 @@ export default function Customers() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
+              <button className="btn secondary print-hide" onClick={() => setCreateOpen(true)} disabled={loading}>
+                Create Customer
+              </button>
               <button className="btn secondary print-hide" onClick={() => window.print()}>Print</button>
               <button className="btn secondary print-hide" onClick={downloadCustomersCsv} disabled={loading}>Export CSV</button>
               <button className="btn secondary print-hide" onClick={() => customerImportInputRef.current?.click()} disabled={loading}>Import Customers</button>
@@ -361,6 +412,43 @@ export default function Customers() {
             <div><b>Created:</b> {viewRow.createdAt ? new Date(viewRow.createdAt).toLocaleString() : "-"}</div>
             <div style={{ marginTop: 12, textAlign: "right" }}>
               <button className="btn" onClick={() => setViewRow(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {createOpen && (
+        <div className="overlay" onClick={() => setCreateOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Add Customer</h3>
+            <label>Name</label>
+            <input
+              value={createForm.name}
+              onChange={(e) => setCreateForm((p) => ({ ...p, name: e.target.value }))}
+              placeholder="Customer name"
+            />
+            <label>Phone</label>
+            <input
+              value={createForm.phone}
+              onChange={(e) => setCreateForm((p) => ({ ...p, phone: digitsOnly(e.target.value).slice(0, 10) }))}
+              placeholder="10-digit phone"
+              inputMode="numeric"
+            />
+            <label>Address</label>
+            <input
+              value={createForm.address}
+              onChange={(e) => setCreateForm((p) => ({ ...p, address: e.target.value }))}
+              placeholder="Address"
+            />
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className="btn secondary" onClick={() => setCreateOpen(false)}>Cancel</button>
+              <button
+                className="btn"
+                onClick={saveCreate}
+                disabled={loading || digitsOnly(createForm.phone).length !== 10 || !nameRegex.test(String(createForm.name || "").trim())}
+              >
+                Save Customer
+              </button>
             </div>
           </div>
         </div>

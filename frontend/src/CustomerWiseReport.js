@@ -78,12 +78,20 @@ export default function CustomerWiseReport() {
   };
 
   return (
-    <div style={{ padding: 18 }}>
-      <TopNav onLogout={doLogout} />
-      <h2 style={{ marginTop: 12 }}>Customer-wise Report</h2>
+    <div className="page">
+      <TopNav
+        onLogout={doLogout}
+        title="Customer-wise Report | Apex Logistics"
+        subtitle="Minimal control center for your POS"
+      />
 
       <div className="panel" style={{ marginTop: 12, padding: 14 }}>
-        <h3 style={{ marginTop: 0 }}>Summary</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <h3 style={{ margin: 0 }}>Summary</h3>
+          <button className="btn secondary" type="button" onClick={load} disabled={loading}>
+            {loading ? "Loading..." : "Refresh"}
+          </button>
+        </div>
         <div style={{ lineHeight: 1.9 }}>
           <div>Customers with outstanding: <b>{rows.length}</b></div>
           <div>Total outstanding: <b>Rs {formatNumber(totalOutstanding)}</b></div>
@@ -92,7 +100,7 @@ export default function CustomerWiseReport() {
       </div>
 
       <div className="panel" style={{ marginTop: 12, padding: 14 }}>
-        <h3 style={{ marginTop: 0 }}>Outstanding by Customer</h3>
+        <h3 style={{ margin: 0 }}>Outstanding by Customer</h3>
         {msg ? <div style={{ color: "crimson", marginBottom: 10 }}>{msg}</div> : null}
 
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
