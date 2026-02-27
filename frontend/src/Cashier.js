@@ -7,6 +7,9 @@ import { applyReceiptPrint, cleanupReceiptPrint } from "./printUtils";
 import { formatNumber } from "./utils/format";
 
 const CHEQUE_DUE_PREFIX = "CHEQUE_DUE:";
+const API_BASE = String(process.env.REACT_APP_API_URL || "http://localhost:4000")
+  .trim()
+  .replace(/\/+$/, "");
 
 function parseChequeDueDates(notes) {
   return String(notes || "")
@@ -28,7 +31,9 @@ function daysUntilDate(dateText) {
 
 export default function Cashier({ onLogout }) {
   const role = localStorage.getItem("role");
+  const loggedUsername = localStorage.getItem("username") || "";
   const requiresStartDay = role === "cashier";
+  const billingPath = role === "admin" ? "/billing" : "/cashier";
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -43,16 +48,31 @@ export default function Cashier({ onLogout }) {
   const [showPrint, setShowPrint] = useState(false);
   const [printPayload, setPrintPayload] = useState(null);
   const [showLayoutEditor, setShowLayoutEditor] = useState(false);
-  const [printPaperPrompt, setPrintPaperPrompt] = useState(false);
   const [printLayoutMode, setPrintLayoutMode] = useState("3inch");
+  const [showPrintSizeMenu, setShowPrintSizeMenu] = useState(false);
   const [showReportsMenu, setShowReportsMenu] = useState(false);
   const [showStockMenu, setShowStockMenu] = useState(false);
   const reportsMenuRef = useRef(null);
   const stockMenuRef = useRef(null);
+  const printMenuRef = useRef(null);
+  const draftSnapshotRef = useRef({
+    cart: [],
+    customerEnabled: true,
+    customerId: "",
+    customerName: "",
+    customerPhone: "",
+    customerAddress: "",
+    discountType: "none",
+    discountValue: "",
+    paymentMethod: "cash",
+    cashReceived: "",
+    chequeDate: "",
+  });
   const DEFAULT_BILL_LAYOUT = {
     companyName: "Apex Logistics",
     headerText: "Aluviharaya, Matale\nMobile: +94770654279\nThank you! Visit again",
     footerText: "Powered by J&co.",
+    creditPeriodDays: 55,
     showItemsHeading: true,
     showCustomer: true,
     showTotals: true,
@@ -163,10 +183,78 @@ export default function Cashier({ onLogout }) {
       if (stockMenuRef.current && !stockMenuRef.current.contains(event.target)) {
         setShowStockMenu(false);
       }
+      if (printMenuRef.current && !printMenuRef.current.contains(event.target)) {
+        setShowPrintSizeMenu(false);
+      }
     };
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
+
+  useEffect(() => {
+    draftSnapshotRef.current = {
+      cart,
+      customerEnabled,
+      customerId,
+      customerName,
+      customerPhone,
+      customerAddress,
+      discountType,
+      discountValue,
+      paymentMethod,
+      cashReceived,
+      chequeDate,
+    };
+  }, [
+    cart,
+    customerEnabled,
+    customerId,
+    customerName,
+    customerPhone,
+    customerAddress,
+    discountType,
+    discountValue,
+    paymentMethod,
+    cashReceived,
+    chequeDate,
+  ]);
+
+  const autoSaveDraftOnLeave = useCallback(() => {
+    const snap = draftSnapshotRef.current;
+    if (!Array.isArray(snap.cart) || snap.cart.length <= 1) return;
+    const token = localStorage.getItem("token");
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const payload = {
+      name: null,
+      cart: snap.cart,
+      customerEnabled: snap.customerEnabled,
+      customerId: snap.customerId,
+      customerName: snap.customerName,
+      customerPhone: snap.customerPhone,
+      customerAddress: snap.customerAddress,
+      discountType: snap.discountType,
+      discountValue: snap.discountValue,
+      paymentMethod: snap.paymentMethod,
+      cashReceived: snap.cashReceived,
+      chequeDate: snap.chequeDate,
+    };
+    fetch(`${API_BASE}/drafts`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const onBeforeUnload = () => autoSaveDraftOnLeave();
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      autoSaveDraftOnLeave();
+    };
+  }, [autoSaveDraftOnLeave]);
 
   const [barcode, setBarcode] = useState("");
   const [qty, setQty] = useState(1);
@@ -424,9 +512,13 @@ export default function Cashier({ onLogout }) {
   };
 
   const saveLayout = () => {
-    setBillLayout(layoutDraft);
+    const normalized = {
+      ...layoutDraft,
+      creditPeriodDays: Math.max(1, Number.parseInt(String(layoutDraft.creditPeriodDays || 55), 10) || 55),
+    };
+    setBillLayout(normalized);
     try {
-      localStorage.setItem("billLayout", JSON.stringify(layoutDraft));
+      localStorage.setItem("billLayout", JSON.stringify(normalized));
     } catch {
       // ignore storage errors
     }
@@ -438,7 +530,7 @@ export default function Cashier({ onLogout }) {
   };
 
   const handlePrintNow = () => {
-    setPrintPaperPrompt(true);
+    setShowPrintSizeMenu((v) => !v);
   };
 
   const loadPendingSales = useCallback(async () => {
@@ -480,8 +572,10 @@ export default function Cashier({ onLogout }) {
       .filter(Boolean);
 
     const customer = payload?.customer || {};
+    const pendingCustomerId =
+      String(payload?.customerId || customer?.id || "").trim();
     setCart(nextCart);
-    setCustomerId("");
+    setCustomerId(pendingCustomerId);
     setCustomerName(String(customer?.name || ""));
     setCustomerPhone(String(customer?.phone || ""));
     setCustomerAddress(String(customer?.address || ""));
@@ -506,13 +600,13 @@ export default function Cashier({ onLogout }) {
       const productList = Array.isArray(productsForPending) ? productsForPending : (productsForPending?.items || []);
       if (Array.isArray(productList) && productList.length) setAllItems(productList);
       applyPendingPayloadToForm(payload, id, productList);
-      navigate(`/cashier?pendingId=${id}`, { replace: true });
+      navigate(`${billingPath}?pendingId=${id}`, { replace: true });
     } catch (e) {
       setMsg("Error: " + e.message);
     } finally {
       setLoading(false);
     }
-  }, [applyPendingPayloadToForm, navigate]);
+  }, [applyPendingPayloadToForm, navigate, billingPath]);
 
   useEffect(() => {
     const pendingId = new URLSearchParams(location.search).get("pendingId");
@@ -523,7 +617,7 @@ export default function Cashier({ onLogout }) {
 
   const confirmPrint = (mode) => {
     setPrintLayoutMode(mode);
-    setPrintPaperPrompt(false);
+    setShowPrintSizeMenu(false);
     applyReceiptPrint(mode);
     const cleanup = () => {
       cleanupReceiptPrint();
@@ -554,6 +648,10 @@ export default function Cashier({ onLogout }) {
 
       setCart((prev) => {
         const existing = prev.find((p) => p.barcode === product.barcode);
+        const autoPctRaw = Number(product?.defaultDiscountPercent || 0);
+        const autoPct = Number.isFinite(autoPctRaw) ? Math.max(0, Math.min(100, autoPctRaw)) : 0;
+        const defaultItemDiscountType = autoPct > 0 ? "percent" : "none";
+        const defaultItemDiscountValue = autoPct > 0 ? String(autoPct) : "";
         if (existing) {
           return prev.map((p) =>
             p.barcode === product.barcode ? { ...p, qty: p.qty + Number(qty) } : p
@@ -566,8 +664,8 @@ export default function Cashier({ onLogout }) {
             price: Number(String(product.price).replace(/,/g, "")),
             qty: Number(qty),
             freeQty: 0,
-            itemDiscountType: "none",
-            itemDiscountValue: "",
+            itemDiscountType: defaultItemDiscountType,
+            itemDiscountValue: defaultItemDiscountValue,
           },
         ];
       });
@@ -645,8 +743,8 @@ export default function Cashier({ onLogout }) {
     setShowCustomerDropdown(false);
     setCustomerResults([]);
     setSelectedPendingSaleId("");
-    if (location.pathname === "/cashier" && location.search.includes("pendingId=")) {
-      navigate("/cashier", { replace: true });
+    if (location.search.includes("pendingId=")) {
+      navigate(billingPath, { replace: true });
     }
   };
 
@@ -692,10 +790,17 @@ export default function Cashier({ onLogout }) {
       const d = draft?.data || {};
 
       setCart(Array.isArray(d.cart) ? d.cart : []);
-      setCustomerId(d.customerId || "");
-      setCustomerName(d.customerName || "");
-      setCustomerPhone(d.customerPhone || "");
-      setCustomerAddress(d.customerAddress || "");
+      setCustomerId(
+        String(
+          d.customerId ||
+          d.customer?.id ||
+          d.customer?.customerId ||
+          ""
+        ).trim()
+      );
+      setCustomerName(d.customerName || d.customer?.name || "");
+      setCustomerPhone(d.customerPhone || d.customer?.phone || "");
+      setCustomerAddress(d.customerAddress || d.customer?.address || "");
       setDiscountType(d.discountType || "none");
       setDiscountValue(d.discountValue ?? "");
       setPaymentMethod(d.paymentMethod || "cash");
@@ -832,6 +937,7 @@ export default function Cashier({ onLogout }) {
     }
 
     payload.customer = {
+      id: customerId.trim() || null,
       name,
       phone: phoneDigits || null,
       address: customerAddress.trim() || null,
@@ -883,7 +989,14 @@ export default function Cashier({ onLogout }) {
       openPrintPreview({
         saleId,
         dateText: sale?.sale?.createdAt ? new Date(sale.sale.createdAt).toLocaleString() : new Date().toLocaleString(),
-        customerId: sale?.sale?.customerId || customerId || "",
+        customerId:
+          sale?.sale?.customerId ||
+          sale?.sale?.customer?.id ||
+          sale?.customerId ||
+          sale?.customer?.id ||
+          customerId ||
+          "",
+        staffName: sale?.sale?.createdBy?.username || loggedUsername || "",
         items: cartSnapshot,
         subtotal: subtotalSnapshot,
         discount: discountSnapshot,
@@ -993,9 +1106,9 @@ export default function Cashier({ onLogout }) {
 
       {/* Customer + Barcode add */}
       <div style={{ marginTop: 10 }}>
-        <h3 style={{ margin: "0 0 8px" }}>Customer Details</h3>
-
-        <div style={{ position: "relative", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+          <h3 style={{ margin: 0 }}>Customer Details</h3>
+          <div style={{ position: "relative" }}>
           <button
             onClick={() => {
               setShowDraftDropdown((v) => !v);
@@ -1058,46 +1171,7 @@ export default function Cashier({ onLogout }) {
                 ))}
             </div>
           )}
-        </div>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-          <button onClick={loadPendingSales} disabled={pendingSalesLoading || loading} style={{ padding: 8 }}>
-            {pendingSalesLoading ? "Loading Pending..." : "Refresh Pending"}
-          </button>
-          <select
-            value={selectedPendingSaleId}
-            onChange={(e) => {
-              const id = e.target.value;
-              if (id) loadPendingSaleForEdit(id);
-            }}
-            style={{ padding: 8, minWidth: 280 }}
-          >
-            <option value="">Load Pending Request...</option>
-            {pendingSales.map((r) => {
-              const payload = r?.pending?.payload || {};
-              const itemCount = (payload?.items || []).reduce(
-                (sum, it) => sum + Number(it?.qty || 0) + Number(it?.freeQty || 0),
-                0
-              );
-              return (
-                <option key={r.id} value={String(r.id)}>
-                  {`#${r.id} | ${payload?.customer?.name || "-"} | ${formatNumber(itemCount)} items`}
-                </option>
-              );
-            })}
-          </select>
-          {selectedPendingSaleId ? (
-            <button
-              onClick={() => {
-                setSelectedPendingSaleId("");
-                navigate("/cashier", { replace: true });
-                setMsg("Pending request edit cleared");
-              }}
-              disabled={loading}
-            >
-              Clear Pending Edit
-            </button>
-          ) : null}
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -1543,6 +1617,8 @@ export default function Cashier({ onLogout }) {
               openPrintPreview({
                 saleId: "DRAFT",
                 dateText: new Date().toLocaleString(),
+                customerId: customerId || "",
+                staffName: loggedUsername || "",
                 items: cart,
                 subtotal,
                 discount: discountAmount,
@@ -1566,6 +1642,8 @@ export default function Cashier({ onLogout }) {
               openPrintPreview({
                 saleId: "TRIAL-001",
                 dateText: new Date().toLocaleString(),
+                customerId: customerId || "",
+                staffName: loggedUsername || "",
                 items: cart.length
                   ? cart
                   : [{ barcode: "trial", name: "Trial Item", qty: 1, price: 150 }],
@@ -1608,11 +1686,58 @@ export default function Cashier({ onLogout }) {
               width: printLayoutMode === "a4" ? "min(980px, 96vw)" : "min(520px, 96vw)",
               maxHeight: "92vh",
               overflowY: "auto",
+              color: "#111827",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0 }}>Print Preview</h3>
+              <h3 style={{ margin: 0, color: "#111827" }}>Print Preview</h3>
               <button onClick={() => setShowPrint(false)}>X</button>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 12, marginBottom: 10 }}>
+              <div ref={printMenuRef} style={{ position: "relative" }}>
+                <button onClick={handlePrintNow} style={{ padding: 12, fontSize: 16 }}>
+                  Print Now
+                </button>
+                {showPrintSizeMenu && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 6px)",
+                      left: 0,
+                      minWidth: 150,
+                      background: "#ffffff",
+                      border: "1px solid #d1d5db",
+                      borderRadius: 10,
+                      boxShadow: "0 10px 24px rgba(0,0,0,0.18)",
+                      padding: 6,
+                      zIndex: 100002,
+                    }}
+                  >
+                    <button
+                      onClick={() => confirmPrint("3inch")}
+                      style={{ width: "100%", textAlign: "left", padding: "8px 10px", marginBottom: 6 }}
+                    >
+                      3 Inch
+                    </button>
+                    <button
+                      onClick={() => confirmPrint("a4")}
+                      style={{ width: "100%", textAlign: "left", padding: "8px 10px" }}
+                    >
+                      A4
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setShowLayoutEditor((v) => !v)}
+                style={{ padding: 12 }}
+              >
+                {showLayoutEditor ? "Hide Layout" : "Customize Layout"}
+              </button>
+              <button onClick={() => setShowPrint(false)} style={{ padding: 12 }}>
+                Close
+              </button>
             </div>
 
             <div id="print-area" style={{ marginTop: 10, overflowX: "hidden" }}>
@@ -1625,6 +1750,7 @@ export default function Cashier({ onLogout }) {
                   customerName={printPayload?.customerName || ""}
                 customerPhone={printPayload?.customerPhone || ""}
                 customerAddress={printPayload?.customerAddress || ""}
+                staffName={printPayload?.staffName || loggedUsername || ""}
                 items={printPayload?.items || []}
                 subtotal={printPayload?.subtotal || 0}
                 discount={printPayload?.discount || 0}
@@ -1635,125 +1761,127 @@ export default function Cashier({ onLogout }) {
               />
             </div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-              <button onClick={handlePrintNow} style={{ padding: 12, fontSize: 16 }}>
-                Print Now
-              </button>
-              <button
-                onClick={() => setShowLayoutEditor((v) => !v)}
-                style={{ padding: 12 }}
-              >
-                {showLayoutEditor ? "Hide Layout" : "Customize Layout"}
-              </button>
-              <button onClick={() => setShowPrint(false)} style={{ padding: 12 }}>
-                Close
-              </button>
-            </div>
-
             {showLayoutEditor && (
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Bill Layout</div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  <label>
-                    Company Name
-                    <input
-                      value={layoutDraft.companyName || ""}
-                      onChange={(e) =>
-                        setLayoutDraft((prev) => ({ ...prev, companyName: e.target.value }))
-                      }
-                      style={{ width: "100%", padding: 6, marginTop: 4 }}
-                    />
-                  </label>
-                  <label>
-                    Header Lines (one per line)
-                    <textarea
-                      rows={2}
-                      value={layoutDraft.headerText || ""}
-                      onChange={(e) =>
-                        setLayoutDraft((prev) => ({ ...prev, headerText: e.target.value }))
-                      }
-                      style={{ width: "100%", padding: 6, marginTop: 4 }}
-                    />
-                  </label>
-                  <label>
-                    Footer Lines (one per line)
-                    <textarea
-                      rows={2}
-                      value={layoutDraft.footerText || ""}
-                      onChange={(e) =>
-                        setLayoutDraft((prev) => ({ ...prev, footerText: e.target.value }))
-                      }
-                      style={{ width: "100%", padding: 6, marginTop: 4 }}
-                    />
-                  </label>
-                  <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(layoutDraft.showItemsHeading)}
-                      onChange={(e) =>
-                        setLayoutDraft((prev) => ({ ...prev, showItemsHeading: e.target.checked }))
-                      }
-                    />
-                    Show items heading
-                  </label>
-                  <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(layoutDraft.showCustomer)}
-                      onChange={(e) =>
-                        setLayoutDraft((prev) => ({ ...prev, showCustomer: e.target.checked }))
-                      }
-                    />
-                    Show customer info
-                  </label>
-                  <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(layoutDraft.showTotals)}
-                      onChange={(e) =>
-                        setLayoutDraft((prev) => ({ ...prev, showTotals: e.target.checked }))
-                      }
-                    />
-                    Show totals
-                  </label>
-                  <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(layoutDraft.showPayment)}
-                      onChange={(e) =>
-                        setLayoutDraft((prev) => ({ ...prev, showPayment: e.target.checked }))
-                      }
-                    />
-                    Show payment
-                  </label>
-                </div>
-                <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                  <button onClick={saveLayout} style={{ padding: 10 }}>
-                    Save Layout
-                  </button>
-                  <button onClick={resetLayout} style={{ padding: 10 }}>
-                    Reset Defaults
-                  </button>
+              <div
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  background: "rgba(0,0,0,0.45)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 20,
+                  zIndex: 100000,
+                }}
+                onClick={() => setShowLayoutEditor(false)}
+              >
+                <div
+                  style={{
+                    width: "min(760px, 96vw)",
+                    maxHeight: "86vh",
+                    overflowY: "auto",
+                    background: "#ffffff",
+                    borderRadius: 12,
+                    padding: 14,
+                    color: "#111827",
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <div style={{ fontWeight: 700, color: "#111827" }}>Bill Layout</div>
+                    <button onClick={() => setShowLayoutEditor(false)} style={{ padding: "6px 10px" }}>Close</button>
+                  </div>
+                  <div style={{ display: "grid", gap: 8, color: "#111827" }}>
+                    <label style={{ color: "#111827", fontWeight: 600 }}>
+                      Company Name
+                      <input
+                        value={layoutDraft.companyName || ""}
+                        onChange={(e) =>
+                          setLayoutDraft((prev) => ({ ...prev, companyName: e.target.value }))
+                        }
+                        style={{ width: "100%", padding: 6, marginTop: 4 }}
+                      />
+                    </label>
+                    <label style={{ color: "#111827", fontWeight: 600 }}>
+                      Header Lines (one per line)
+                      <textarea
+                        rows={2}
+                        value={layoutDraft.headerText || ""}
+                        onChange={(e) =>
+                          setLayoutDraft((prev) => ({ ...prev, headerText: e.target.value }))
+                        }
+                        style={{ width: "100%", padding: 6, marginTop: 4 }}
+                      />
+                    </label>
+                    <label style={{ color: "#111827", fontWeight: 600 }}>
+                      Credit Period (Days)
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={layoutDraft.creditPeriodDays ?? 55}
+                        onChange={(e) =>
+                          setLayoutDraft((prev) => ({
+                            ...prev,
+                            creditPeriodDays: e.target.value,
+                          }))
+                        }
+                        style={{ width: "100%", padding: 6, marginTop: 4 }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", color: "#111827", fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(layoutDraft.showItemsHeading)}
+                        onChange={(e) =>
+                          setLayoutDraft((prev) => ({ ...prev, showItemsHeading: e.target.checked }))
+                        }
+                      />
+                      <span style={{ color: "#111827" }}>Show items heading</span>
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", color: "#111827", fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(layoutDraft.showCustomer)}
+                        onChange={(e) =>
+                          setLayoutDraft((prev) => ({ ...prev, showCustomer: e.target.checked }))
+                        }
+                      />
+                      <span style={{ color: "#111827" }}>Show customer info</span>
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", color: "#111827", fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(layoutDraft.showTotals)}
+                        onChange={(e) =>
+                          setLayoutDraft((prev) => ({ ...prev, showTotals: e.target.checked }))
+                        }
+                      />
+                      <span style={{ color: "#111827" }}>Show totals</span>
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", color: "#111827", fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(layoutDraft.showPayment)}
+                        onChange={(e) =>
+                          setLayoutDraft((prev) => ({ ...prev, showPayment: e.target.checked }))
+                        }
+                      />
+                      <span style={{ color: "#111827" }}>Show payment</span>
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                    <button onClick={saveLayout} style={{ padding: 10 }}>
+                      Save Layout
+                    </button>
+                    <button onClick={resetLayout} style={{ padding: 10 }}>
+                      Reset Defaults
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
-            {printPaperPrompt && (
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Print Size</div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={() => confirmPrint("3inch")} style={{ padding: 10 }}>
-                    3 Inch
-                  </button>
-                  <button onClick={() => confirmPrint("a4")} style={{ padding: 10 }}>
-                    A4
-                  </button>
-                  <button onClick={() => setPrintPaperPrompt(false)} style={{ padding: 10 }}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
