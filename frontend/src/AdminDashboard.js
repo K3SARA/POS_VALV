@@ -39,6 +39,7 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [billingPrice, setBillingPrice] = useState("");
+  const [defaultDiscountPercent, setDefaultDiscountPercent] = useState("");
   const [stock, setStock] = useState("");
 
   // Product list controls
@@ -286,6 +287,7 @@ const [newInvoicePhoto, setNewInvoicePhoto] = useState("");
           name,
           price: Number(price),
           billingPrice: Number(billingPrice),
+          defaultDiscountPercent: Number(defaultDiscountPercent || 0),
           stock: Number(stock || 0),
           supplierName: newSupplierName || null,
 supplierInvoiceNo: newSupplierInvoiceNo || null,
@@ -300,6 +302,7 @@ invoicePhoto: newInvoicePhoto || null,
       setName("");
       setPrice("");
       setBillingPrice("");
+      setDefaultDiscountPercent("");
       setStock("");
       await loadSummary();
       if (productsLoaded) {
@@ -1067,6 +1070,18 @@ const createCustomer = async (e) => {
               <div className="input-group">
                 <label>Stock</label>
                 <input type="number" value={stock} onChange={(e) => setStock(e.target.value)} />
+              </div>
+              <div className="input-group">
+                <label>Default Discount %</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={defaultDiscountPercent}
+                  onChange={(e) => setDefaultDiscountPercent(e.target.value)}
+                  placeholder="0"
+                />
               </div>
               <input
   value={newSupplierName}

@@ -39,6 +39,7 @@ model Product {
   name      String
   price     Decimal
   invoicePrice Decimal?
+  defaultDiscountPercent Decimal @default(0)
   stock     Int
   damagedStock Int @default(0)
   supplierName      String?

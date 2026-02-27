@@ -21,7 +21,7 @@ export default function Stock() {
   const [sortBy, setSortBy] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
   const [editingBarcode, setEditingBarcode] = useState(null);
-  const [editValues, setEditValues] = useState({ name: "", invoicePrice: "", billingPrice: "", stock: "" });
+  const [editValues, setEditValues] = useState({ name: "", invoicePrice: "", billingPrice: "", defaultDiscountPercent: "", stock: "" });
   const [showAddStock, setShowAddStock] = useState(false);
   const [showReportsMenu, setShowReportsMenu] = useState(false);
   const [showStockMenu, setShowStockMenu] = useState(false);
@@ -31,12 +31,23 @@ export default function Stock() {
   const [name, setName] = useState("");
   const [invoicePrice, setInvoicePrice] = useState("");
   const [billingPrice, setBillingPrice] = useState("");
+  const [defaultDiscountPercent, setDefaultDiscountPercent] = useState("");
   const [stock, setStock] = useState("");
   const [supplierName, setSupplierName] = useState("");
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState("");
   const [supplierPaymentMethod, setSupplierPaymentMethod] = useState("cash");
   const [receivedDate, setReceivedDate] = useState(todayStr());
   const [invoicePhoto, setInvoicePhoto] = useState("");
+  const [importProgress, setImportProgress] = useState({
+    active: false,
+    fileName: "",
+    current: 0,
+    total: 0,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+  });
 
 
   const stockImportInputRef = React.useRef(null);
@@ -66,38 +77,55 @@ export default function Stock() {
 
 
     let created = 0, updated = 0, skipped = 0, failed = 0;
+    const updateProgress = (current) =>
+      setImportProgress((prev) => ({
+        ...prev,
+        current,
+        created,
+        updated,
+        skipped,
+        failed,
+      }));
+    setImportProgress({
+      active: true,
+      fileName: file.name || "stock.csv",
+      current: 0,
+      total: parsed.length,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+    });
 
     const normalizePm = (v) => {
       const raw = String(v ?? "").trim().toLowerCase();
       if (raw === "cash" || raw === "credit" || raw === "cheque") return raw;
       return "";
     };
+    const hasValue = (v) => v !== undefined && v !== null && String(v).trim() !== "";
 
-    for (const row of parsed) {
+    for (let i = 0; i < parsed.length; i += 1) {
+      const row = parsed[i];
       const barcode = String(row.barcode || row.code || "").trim();
-      const name = String(row.name || row.productname || "").trim();
-      if (!barcode) { skipped += 1; continue; }
+      const csvName = String(row.name || row.productname || "").trim();
+      if (!barcode) { skipped += 1; updateProgress(i + 1); continue; }
 
       try {
         let existing = null;
         try { existing = await apiFetch(`/products/${encodeURIComponent(barcode)}`); } catch {}
 
-        const supplierName =
-          String(
-            row.suppliername ??
-            row.supplier_name ??
-            row.supplier ??
-            row.suppliercompany ??
-            ""
-          ).trim();
-        const supplierInvoiceNo =
-          String(
-            row.supplierinvoiceno ??
-            row.supplier_invoice_no ??
-            row.supplierinvoice ??
-            row.invoiceno ??
-            ""
-          ).trim();
+        const rawSupplierName =
+          row.suppliername ??
+          row.supplier_name ??
+          row.supplier ??
+          row.suppliercompany;
+        const supplierName = String(rawSupplierName ?? "").trim();
+        const rawSupplierInvoiceNo =
+          row.supplierinvoiceno ??
+          row.supplier_invoice_no ??
+          row.supplierinvoice ??
+          row.invoiceno;
+        const supplierInvoiceNo = String(rawSupplierInvoiceNo ?? "").trim();
         const supplierPaymentMethod = normalizePm(
           row.supplierpaymentmethod ??
           row.paymentmethod ??
@@ -105,36 +133,56 @@ export default function Stock() {
           row.supplierpayment ??
           ""
         );
-        const receivedDate = String(
+        const rawReceivedDate =
           row.receiveddate ??
           row.received_date ??
-          row.date ??
-          ""
-        ).trim();
+          row.date;
+        const receivedDate = String(rawReceivedDate ?? "").trim();
 
-        const invoicePrice = toNum(row.invoicePrice ?? row.invoiceprice, Number(existing?.invoicePrice || 0));
-        const billingPrice = toNum(row.billingPrice ?? row.billingprice ?? row.price, Number(existing?.price || 0));
-        const stockValue = toNum(row.stock, Number(existing?.stock || 0));
-        const safeName = name || String(existing?.name || "").trim();
-        if (!safeName) { skipped += 1; continue; }
+        const rawInvoicePrice = row.invoicePrice ?? row.invoiceprice;
+        const rawBillingPrice = row.billingPrice ?? row.billingprice ?? row.price;
+        const rawDefaultDiscountPercent =
+          row.defaultdiscountpercent ??
+          row.defaultdiscountpercentage ??
+          row.defaultdiscount ??
+          row.defaultdiscountpct ??
+          row.discountpercent ??
+          row.discountpercentage ??
+          row.discount_pct;
+        const rawStock = row.stock;
 
         if (existing) {
           const updateBody = {
-            name: safeName,
-            invoicePrice,
-            billingPrice,
-            stock: stockValue,
-            ...(supplierName ? { supplierName } : {}),
-            ...(supplierInvoiceNo ? { supplierInvoiceNo } : {}),
-            ...(supplierPaymentMethod ? { supplierPaymentMethod } : {}),
-            ...(receivedDate ? { receivedDate } : {}),
+            ...(hasValue(csvName) ? { name: csvName } : {}),
+            ...(hasValue(rawInvoicePrice) ? { invoicePrice: toNum(rawInvoicePrice, Number(existing?.invoicePrice || 0)) } : {}),
+            ...(hasValue(rawBillingPrice) ? { billingPrice: toNum(rawBillingPrice, Number(existing?.price || 0)) } : {}),
+            ...(hasValue(rawDefaultDiscountPercent)
+              ? {
+                  defaultDiscountPercent: Math.max(
+                    0,
+                    Math.min(100, toNum(rawDefaultDiscountPercent, Number(existing?.defaultDiscountPercent || 0)))
+                  ),
+                }
+              : {}),
+            ...(hasValue(rawStock) ? { stock: toNum(rawStock, Number(existing?.stock || 0)) } : {}),
+            ...(hasValue(rawSupplierName) ? { supplierName } : {}),
+            ...(hasValue(rawSupplierInvoiceNo) ? { supplierInvoiceNo } : {}),
+            ...(hasValue(rawSupplierName) || hasValue(rawSupplierInvoiceNo) || supplierPaymentMethod ? { supplierPaymentMethod: supplierPaymentMethod || null } : {}),
+            ...(hasValue(rawReceivedDate) ? { receivedDate } : {}),
           };
+          if (Object.keys(updateBody).length === 0) { skipped += 1; updateProgress(i + 1); continue; }
           await apiFetch(`/products/${encodeURIComponent(barcode)}`, {
             method: "PUT",
             body: JSON.stringify(updateBody),
           });
           updated += 1;
         } else {
+          const safeName = csvName;
+          if (!safeName) { skipped += 1; updateProgress(i + 1); continue; }
+          const invoicePrice = toNum(rawInvoicePrice, 0);
+          const billingPrice = toNum(rawBillingPrice, 0);
+          const defaultDiscountPercent = Math.max(0, Math.min(100, toNum(rawDefaultDiscountPercent, 0)));
+          const stockValue = toNum(rawStock, 0);
           await apiFetch("/products", {
             method: "POST",
             body: JSON.stringify({
@@ -142,6 +190,7 @@ export default function Stock() {
               name: safeName,
               invoicePrice,
               billingPrice,
+              defaultDiscountPercent,
               stock: stockValue,
               ...(supplierName ? { supplierName } : {}),
               ...(supplierInvoiceNo ? { supplierInvoiceNo } : {}),
@@ -154,6 +203,7 @@ export default function Stock() {
       } catch {
         failed += 1;
       }
+      updateProgress(i + 1);
     }
 
     await loadProducts();
@@ -161,6 +211,7 @@ export default function Stock() {
   } catch (e) {
     setMsg("Error: " + e.message);
   } finally {
+    setImportProgress((prev) => ({ ...prev, active: false }));
     setLoading(false);
   }
 };
@@ -249,13 +300,14 @@ export default function Stock() {
       name: product.name,
       invoicePrice: product.invoicePrice ?? "",
       billingPrice: product.price ?? "",
+      defaultDiscountPercent: product.defaultDiscountPercent ?? "",
       stock: product.stock,
     });
   };
 
   const cancelEdit = () => {
     setEditingBarcode(null);
-    setEditValues({ name: "", invoicePrice: "", billingPrice: "", stock: "" });
+    setEditValues({ name: "", invoicePrice: "", billingPrice: "", defaultDiscountPercent: "", stock: "" });
   };
 
   const saveEdit = async (barcodeValue) => {
@@ -266,6 +318,7 @@ export default function Stock() {
           name: editValues.name,
           invoicePrice: editValues.invoicePrice,
           billingPrice: editValues.billingPrice,
+          defaultDiscountPercent: Number(editValues.defaultDiscountPercent || 0),
           stock: Number(editValues.stock),
         }),
       });
@@ -299,6 +352,7 @@ export default function Stock() {
           name,
           invoicePrice: Number(invoicePrice || 0),
           billingPrice: Number(billingPrice || 0),
+          defaultDiscountPercent: Number(defaultDiscountPercent || 0),
           stock: Number(stock || 0),
           supplierName: supplierName || null,
           supplierInvoiceNo: supplierInvoiceNo || null,
@@ -312,6 +366,7 @@ export default function Stock() {
       setName("");
       setInvoicePrice("");
       setBillingPrice("");
+      setDefaultDiscountPercent("");
       setStock("");
       setSupplierName("");
       setSupplierInvoiceNo("");
@@ -447,6 +502,11 @@ export default function Stock() {
               <span style={{ color: "var(--muted)", fontSize: 12 }}>Auto-loaded on page open</span>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {isAdmin && (
+                <button className="btn add-stock" type="button" onClick={() => setShowAddStock(true)}>
+                  Add Stock
+                </button>
+              )}
               <input placeholder="Search by name or barcode" value={query} onChange={(e) => setQuery(e.target.value)} />
               <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                 <option value="name">Sort by name</option>
@@ -489,6 +549,7 @@ export default function Stock() {
                 <th>Name</th>
                 <th>Invoice Price</th>
                 <th>Billing Price</th>
+                <th>Default Discount %</th>
                 <th>Stock</th>
                 <th>Total Value</th>
                 <th>Supplier</th>
@@ -515,6 +576,18 @@ export default function Stock() {
                       {isEditing ? (
                         <input type="number" value={editValues.billingPrice} onChange={(e) => setEditValues((prev) => ({ ...prev, billingPrice: e.target.value }))} />
                       ) : formatNumber(p.price || 0)}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={editValues.defaultDiscountPercent}
+                          onChange={(e) => setEditValues((prev) => ({ ...prev, defaultDiscountPercent: e.target.value }))}
+                        />
+                      ) : formatNumber(Number(p.defaultDiscountPercent || 0))}
                     </td>
                     <td>
                       {isEditing ? (
@@ -545,7 +618,7 @@ export default function Stock() {
               })}
               {visibleProducts.length === 0 && (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: "center", padding: 16 }}>No products match your filters</td>
+                  <td colSpan="9" style={{ textAlign: "center", padding: 16 }}>No products match your filters</td>
                 </tr>
               )}
             </tbody>
@@ -568,6 +641,7 @@ export default function Stock() {
                 <div className="input-group"><input aria-label="Name" placeholder="Product name" value={name} onChange={(e) => setName(e.target.value)} required /></div>
                 <div className="input-group"><input type="number" aria-label="Invoice price" placeholder="Invoice price" value={invoicePrice} onChange={(e) => setInvoicePrice(e.target.value)} required /></div>
                 <div className="input-group"><input type="number" aria-label="Billing price" placeholder="Billing price" value={billingPrice} onChange={(e) => setBillingPrice(e.target.value)} required /></div>
+                <div className="input-group"><input type="number" min="0" max="100" step="0.01" aria-label="Default discount percent" placeholder="Default discount %" value={defaultDiscountPercent} onChange={(e) => setDefaultDiscountPercent(e.target.value)} /></div>
                 <div className="input-group"><input type="number" aria-label="Stock" placeholder="Stock quantity" value={stock} onChange={(e) => setStock(e.target.value)} /></div>
                 <div className="input-group"><input type="date" aria-label="Received date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} /></div>
                 <div className="input-group form-full"><input aria-label="Supplier name" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="Supplier name" /></div>
@@ -601,6 +675,39 @@ export default function Stock() {
                 <button className="btn" type="submit" disabled={loading}>Save Product</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {importProgress.active && (
+        <div className="overlay" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" style={{ width: "min(560px, 100%)" }}>
+            <h3 style={{ marginTop: 0 }}>Importing Stock...</h3>
+            <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 10 }}>
+              {importProgress.fileName}
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              Row {formatNumber(importProgress.current)} / {formatNumber(importProgress.total)}
+            </div>
+            <div style={{ height: 10, background: "#1f2937", borderRadius: 999, overflow: "hidden", marginBottom: 12 }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: `${importProgress.total ? Math.min(100, Math.round((importProgress.current / importProgress.total) * 100)) : 0}%`,
+                  background: "linear-gradient(90deg, #22c1b5, #3b82f6)",
+                  transition: "width 120ms ease",
+                }}
+              />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, fontSize: 13 }}>
+              <div>Created: <b>{formatNumber(importProgress.created)}</b></div>
+              <div>Updated: <b>{formatNumber(importProgress.updated)}</b></div>
+              <div>Skipped: <b>{formatNumber(importProgress.skipped)}</b></div>
+              <div>Failed: <b>{formatNumber(importProgress.failed)}</b></div>
+            </div>
+            <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted)" }}>
+              Please wait until import completes.
+            </div>
           </div>
         </div>
       )}

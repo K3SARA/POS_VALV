@@ -745,6 +745,7 @@ app.post("/products", auth, requireRole("admin"), async (req, res) => {
       price,
       billingPrice,
       invoicePrice,
+      defaultDiscountPercent,
       stock,
       supplierName,
       supplierInvoiceNo,
@@ -768,8 +769,12 @@ app.post("/products", auth, requireRole("admin"), async (req, res) => {
 
     const rawBilling = billingPrice !== undefined ? billingPrice : price;
     const rawInvoice = invoicePrice !== undefined ? invoicePrice : price;
+    const rawDefaultDiscount = defaultDiscountPercent !== undefined ? defaultDiscountPercent : 0;
     const safeBilling = Number(rawBilling || 0);
     const safeInvoice = Number(rawInvoice || 0);
+    const safeDefaultDiscount = Number.isFinite(Number(rawDefaultDiscount))
+      ? Math.max(0, Math.min(100, Number(rawDefaultDiscount)))
+      : 0;
 
     const p = await prisma.product.create({
       data: {
@@ -780,6 +785,7 @@ app.post("/products", auth, requireRole("admin"), async (req, res) => {
           rawInvoice !== undefined && rawInvoice !== null && String(rawInvoice).trim() !== ""
             ? new Prisma.Decimal(safeInvoice)
             : null,
+        defaultDiscountPercent: new Prisma.Decimal(safeDefaultDiscount),
         stock: Number(stock || 0),
 
         // ✅ new optional fields
@@ -807,6 +813,7 @@ app.put("/products/:barcode", auth, requireRole("admin"), async (req, res) => {
       price,
       billingPrice,
       invoicePrice,
+      defaultDiscountPercent,
       stock,
       supplierName,
       supplierInvoiceNo,
@@ -838,6 +845,13 @@ app.put("/products/:barcode", auth, requireRole("admin"), async (req, res) => {
                 invoicePrice === null || String(invoicePrice).trim() === ""
                   ? null
                   : new Prisma.Decimal(Number(invoicePrice)),
+            }
+          : {}),
+        ...(defaultDiscountPercent !== undefined
+          ? {
+              defaultDiscountPercent: new Prisma.Decimal(
+                Math.max(0, Math.min(100, Number(defaultDiscountPercent) || 0))
+              ),
             }
           : {}),
         ...(stock !== undefined ? { stock: Number(stock) } : {}),
