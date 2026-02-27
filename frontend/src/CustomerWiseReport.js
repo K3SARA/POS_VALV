@@ -11,6 +11,7 @@ export default function CustomerWiseReport() {
   const [showReportsMenu, setShowReportsMenu] = useState(false);
   const [showStockMenu, setShowStockMenu] = useState(false);
   const [rows, setRows] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
   const [sortKey, setSortKey] = useState("outstanding");
@@ -54,8 +55,18 @@ export default function CustomerWiseReport() {
   }, []);
 
   const sortedRows = useMemo(() => {
+    const q = String(searchQuery || "").trim().toLowerCase();
+    const filtered = q
+      ? rows.filter((r) => {
+          const id = String(r?.customerId || "").toLowerCase();
+          const name = String(r?.name || "").toLowerCase();
+          const phone = String(r?.phone || "").toLowerCase();
+          const address = String(r?.address || "").toLowerCase();
+          return id.includes(q) || name.includes(q) || phone.includes(q) || address.includes(q);
+        })
+      : rows;
     const dir = sortDir === "asc" ? 1 : -1;
-    return [...rows].sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       if (sortKey === "outstanding" || sortKey === "totalBillValue") {
         return (Number(a?.[sortKey] || 0) - Number(b?.[sortKey] || 0)) * dir;
       }
@@ -63,7 +74,7 @@ export default function CustomerWiseReport() {
         .toLowerCase()
         .localeCompare(String(b?.[sortKey] || "").toLowerCase()) * dir;
     });
-  }, [rows, sortKey, sortDir]);
+  }, [rows, searchQuery, sortKey, sortDir]);
 
   const totalOutstanding = rows.reduce((sum, r) => sum + Number(r.outstanding || 0), 0);
   const totalBillValue = rows.reduce((sum, r) => sum + Number(r.totalBillValue || 0), 0);
@@ -100,7 +111,15 @@ export default function CustomerWiseReport() {
       </div>
 
       <div className="panel" style={{ marginTop: 12, padding: 14 }}>
-        <h3 style={{ margin: 0 }}>Outstanding by Customer</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+          <h3 style={{ margin: 0 }}>Outstanding by Customer</h3>
+          <input
+            placeholder="Search by ID, name, phone, address"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ minWidth: 280 }}
+          />
+        </div>
         {msg ? <div style={{ color: "crimson", marginBottom: 10 }}>{msg}</div> : null}
 
         <table style={{ width: "100%", borderCollapse: "collapse" }}>

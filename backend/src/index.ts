@@ -1317,6 +1317,7 @@ app.get("/sales/:id", auth, async (req, res) => {
       where: { id },
       include: {
         customer: true,
+        createdBy: { select: { id: true, username: true, role: true } },
         saleItems: { include: { product: true } },
       },
     });
@@ -1495,7 +1496,11 @@ app.put("/sales/:id", auth, adminOnly, async (req: AuthedRequest, res) => {
           discountType: dt,
           discountValue: new Prisma.Decimal(safeDv),
         },
-        include: { saleItems: { include: { product: true } }, customer: true },
+        include: {
+          saleItems: { include: { product: true } },
+          customer: true,
+          createdBy: { select: { id: true, username: true, role: true } },
+        },
       });
 
       return finalSale;

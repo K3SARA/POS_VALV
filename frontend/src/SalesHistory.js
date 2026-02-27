@@ -205,9 +205,11 @@ export default function SalesHistory() {
                   layoutMode={printLayoutMode}
                   saleId={printSale.id}
                 dateText={printSale.createdAt ? new Date(printSale.createdAt).toLocaleString() : ""}
+                customerId={printSale.customerId || printSale.customer?.id || ""}
                 customerName={printSale.customer?.name || ""}
                 customerPhone={printSale.customer?.phone || ""}
                 customerAddress={printSale.customer?.address || ""}
+                staffName={printSale.createdBy?.username || printSale.username || ""}
                 items={(printSale.saleItems || []).map((si) => ({
                   barcode: si.product?.barcode || si.barcode || "",
                   name: si.product?.name || si.name || "Item",
