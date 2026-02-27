@@ -16,6 +16,30 @@ export default function PendingSales() {
   const [printPayload, setPrintPayload] = useState(null);
   const [printLayoutMode, setPrintLayoutMode] = useState("a4");
 
+  const getBillLayoutFromStorage = () => {
+    const DEFAULT_BILL_LAYOUT = {
+      companyName: "Apex Logistics",
+      headerText: "Aluviharaya, Matale\nMobile: +94770654279\nThank you! Visit again",
+      footerText: "Powered by J&co.",
+      creditPeriodDays: 55,
+      showItemsHeading: true,
+      showCustomer: true,
+      showTotals: true,
+      showPayment: true,
+    };
+
+    try {
+      const raw = localStorage.getItem("billLayout");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return { ...DEFAULT_BILL_LAYOUT, ...parsed };
+      }
+    } catch {
+      // ignore bad layout
+    }
+    return DEFAULT_BILL_LAYOUT;
+  };
+
   const openPrintPreview = useCallback((payload) => {
     setPrintPayload(payload);
     setPrintLayoutMode("a4");
@@ -109,7 +133,8 @@ export default function PendingSales() {
           openPrintPreview({
             saleId,
             dateText: fullSale?.createdAt ? new Date(fullSale.createdAt).toLocaleString() : new Date().toLocaleString(),
-            customerId: fullSale?.customer?.id || "",
+            staffName: fullSale?.createdBy?.username || row?.pending?.requestedBy?.username || "",
+            customerId: fullSale?.customerId || fullSale?.customer?.id || payload?.customer?.id || "",
             customerName: fullSale?.customer?.name || fullSale?.customerName || payload?.customer?.name || "",
             customerPhone: fullSale?.customer?.phone || payload?.customer?.phone || "",
             customerAddress: fullSale?.customer?.address || payload?.customer?.address || "",
@@ -190,7 +215,7 @@ export default function PendingSales() {
                 <td>{r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "-"}</td>
                 <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button onClick={() => setViewRow(r)}>View</button>
-                  <button onClick={() => navigate(`/cashier?pendingId=${r.id}`)}>Edit</button>
+                  <button onClick={() => navigate(`/billing?pendingId=${r.id}`)}>Edit</button>
                   <button onClick={() => approveRow(r)} disabled={loading}>Approve</button>
                   <button onClick={() => deleteRow(r)} disabled={loading}>Delete</button>
                 </td>
@@ -261,7 +286,7 @@ export default function PendingSales() {
               </tbody>
             </table>
             <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-              <button onClick={() => navigate(`/cashier?pendingId=${viewRow.id}`)}>Edit in Billing</button>
+              <button onClick={() => navigate(`/billing?pendingId=${viewRow.id}`)}>Edit in Billing</button>
               <button onClick={() => approveRow(viewRow)} disabled={loading}>Approve</button>
               <button onClick={() => deleteRow(viewRow)} disabled={loading}>Delete</button>
               <button onClick={() => setViewRow(null)}>Close</button>
@@ -299,6 +324,20 @@ export default function PendingSales() {
             </div>
             <div id="print-area" style={{ marginTop: 10, overflowX: "hidden" }}>
               <ReceiptPrint
+                layout={(() => {
+                  const layout = getBillLayoutFromStorage();
+                  return {
+                    ...layout,
+                    headerLines: String(layout.headerText || "")
+                      .split("\n")
+                      .map((line) => line.trim())
+                      .filter(Boolean),
+                    footerLines: String(layout.footerText || "")
+                      .split("\n")
+                      .map((line) => line.trim())
+                      .filter(Boolean),
+                  };
+                })()}
                 layoutMode={printLayoutMode}
                 saleId={printPayload?.saleId || ""}
                 dateText={printPayload?.dateText || ""}
@@ -306,6 +345,7 @@ export default function PendingSales() {
                 customerName={printPayload?.customerName || ""}
                 customerPhone={printPayload?.customerPhone || ""}
                 customerAddress={printPayload?.customerAddress || ""}
+                staffName={printPayload?.staffName || ""}
                 items={printPayload?.items || []}
                 subtotal={printPayload?.subtotal || 0}
                 discount={printPayload?.discount || 0}
