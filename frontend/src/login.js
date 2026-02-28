@@ -38,8 +38,10 @@ export default function Login({ onLogin }) {
       localStorage.setItem("token", data.token);
 
       const role = data.user?.role ?? data.role;
+      const loggedUsername = data.user?.username ?? username;
       if (!role) throw new Error("Role missing from login response");
       localStorage.setItem("role", role);
+      localStorage.setItem("username", loggedUsername);
 
       onLogin?.();
       navigate(role === "admin" ? "/admin" : "/cashier", { replace: true });

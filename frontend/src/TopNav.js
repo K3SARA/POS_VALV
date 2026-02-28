@@ -32,6 +32,7 @@ export default function TopNav({
     if (onLogout) return onLogout();
     localStorage.removeItem("token");
     localStorage.removeItem("role");
+    localStorage.removeItem("username");
     navigate("/login");
   };
 

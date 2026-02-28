@@ -12,7 +12,7 @@ export default function ReceiptPrint(props) {
         return new URL(cleanFile, document.baseURI).toString();
       }
     } catch {
-      // fallback below
+      // fallback below gf
     }
     return `/${cleanFile}`;
   };
@@ -48,13 +48,16 @@ export default function ReceiptPrint(props) {
     }))
     .filter((i) => i.qty > 0);
   const freeItemsText = freeItems.map((i) => `${i.name} x ${Number(i.qty || 0).toLocaleString()}`).join(", ");
-  const freeItemsTextA4 = freeItems.map((i) => `${i.code} x ${Number(i.qty || 0).toLocaleString()}`).join(", ");
+  const freeItemsTextA4 = freeItems
+    .map((i) => `(${i.code || "-"}) x ${Number(i.qty || 0).toLocaleString()}`)
+    .join(", ");
   const money = (v) => formatMoney(v);
   const count = (v) => formatNumber(v);
   const invoiceDate = dateText || new Date().toLocaleString();
+  const creditPeriodDays = Math.max(1, Number.parseInt(String(layout.creditPeriodDays ?? 55), 10) || 55);
   const safeRoute = props.route || props.dayRoute || "-";
   const safeUser = props.staffName || props.username || "-";
-  const rows = items.map((i, idx) => {
+  const rows = items.flatMap((i, idx) => {
     const price = Number(i.price) || 0;
     const qty = Number(i.qty) || 0;
     const freeQty = Number(i.freeIssue ? i.qty : i.freeQty || 0) || 0;
@@ -68,19 +71,50 @@ export default function ReceiptPrint(props) {
       const pct = Math.max(0, Math.min(v, 100));
       itemDiscount = Math.round((base * pct) / 100);
     }
-    return {
-      key: `${i.barcode}-${i.name}-${idx}`,
+
+    const out = [];
+
+    out.push({
+      key: `${i.barcode}-${i.name}-${idx}-paid`,
       code: i.barcode || "-",
       name: i.name || "-",
       qty,
-      freeQty,
+      freeQty: 0,
       unitPrice: price,
       total: base,
       discount: itemDiscount,
       lineTotal: Math.max(0, base - itemDiscount),
-    };
+      isFreeRow: false,
+    });
+
+    if (freeQty > 0) {
+      const freeValue = price * freeQty;
+      out.push({
+        key: `${i.barcode}-${i.name}-${idx}-free`,
+        code: i.barcode || "-",
+        name: `${i.name || "-"} (FREE)`,
+        qty: freeQty,
+        freeQty,
+        unitPrice: price,
+        total: freeValue,
+        discount: freeValue,
+        lineTotal: 0,
+        isFreeRow: true,
+      });
+    }
+
+    return out;
   });
-  const totalItemDiscount = rows.reduce((sum, row) => sum + Number(row.discount || 0), 0);
+  const itemLevelDiscount = rows
+    .filter((row) => !row.isFreeRow)
+    .reduce((sum, row) => sum + Number(row.discount || 0), 0);
+  const freeItemsValue = rows
+    .filter((row) => row.isFreeRow)
+    .reduce((sum, row) => sum + Number(row.discount || 0), 0);
+  const orderDiscount = Number(discount || 0);
+  const specialDiscount = itemLevelDiscount; // paid items discount only
+  const totalDiscount = orderDiscount + specialDiscount + freeItemsValue;
+  const totalWithFree = Number(subtotal || 0) + freeItemsValue;
 
   if (layoutMode === "a4") {
     return (
@@ -151,7 +185,7 @@ export default function ReceiptPrint(props) {
             <div className="inv-panel-title">Invoice</div>
             <div>Invoice Date : {invoiceDate}</div>
             <div>System Invoice Number : {saleId || "-"}</div>
-            <div>Sales Invoice Staff : {safeUser}</div>
+            <div>Sales Invoice Staff : - {safeUser}</div>
             <div>SalePoint : KANDY</div>
           </div>
         </div>
@@ -202,15 +236,19 @@ export default function ReceiptPrint(props) {
           </div>
           <div className="inv-total-box">
             <div className="inv-total-row inv-total-row-main">
-              <span>TOTAL :</span><span>{money(subtotal)}</span>
+              <span>TOTAL :</span><span>{money(totalWithFree)}</span>
             </div>
             <div className="inv-total-row inv-total-row-main">
-              <span>ITEM DISCOUNT :</span><span>{money(totalItemDiscount)}</span>
+              <span>TOTAL DISCOUNT :</span><span>{money(totalDiscount)}</span>
+            </div>
+            <div className="inv-total-row inv-total-row-main-special">
+              <span>SPECIAL DISCOUNT :</span><span>{money(specialDiscount)}</span>
             </div>
             {freeItems.length > 0 && (<div className="inv-total-row inv-total-row-main inv-free-items-row"><span>FREE ITEMS :</span><span>{freeItemsTextA4}</span></div>)}
             <div className="inv-total-row inv-total-row-main">
-              <span>(VAT % 0.000) :</span><span>-</span>
-            </div>
+             <span>(VAT % 0.000) :</span><span>-</span>
+            
+          </div>
             <div className="inv-grand-row">
               <span>GRAND TOTAL :</span><span className="inv-grand-value">{money(grandTotal)}</span>
             </div>
@@ -230,7 +268,7 @@ export default function ReceiptPrint(props) {
           </div>
         </div>
 
-        <div className="inv-credit-note">MAXIMUM CREDIT PERIOD 55 DAYS. [ NO EXCEPTION ]</div>
+        <div className="inv-credit-note">MAXIMUM CREDIT PERIOD {creditPeriodDays} DAYS. [ NO EXCEPTION ]</div>
         <div className="inv-thanks">Thank you for business with us!</div>
 
         <div className="inv-signatures">
@@ -261,8 +299,11 @@ export default function ReceiptPrint(props) {
       <div className="row">
         <span>Date:</span><span>{dateText || new Date().toLocaleString()}</span>
       </div>
-      {showCustomer && (customerName || customerPhone || customerAddress) && (
+      {showCustomer && (props.customerId || customerName || customerPhone || customerAddress) && (
         <>
+          <div className="row">
+            <span>Customer ID:</span><span>{props.customerId || "-"}</span>
+          </div>
           <div className="row">
             <span>Customer:</span><span>{customerName || "-"}</span>
           </div>
@@ -278,33 +319,22 @@ export default function ReceiptPrint(props) {
       <div className="hr" />
 
       {showItemsHeading && <div className="bold">Items</div>}
-      {items.map((i) => {
-        const price = Number(i.price) || 0;
-        const qty = Number(i.qty) || 0;
-        const base = price * qty;
-        const t = i.itemDiscountType || "none";
-        const v = Number(i.itemDiscountValue || 0);
-        let itemDiscount = 0;
-        if (t === "amount") {
-          itemDiscount = Math.max(0, Math.min(v, base));
-        } else if (t === "percent") {
-          const pct = Math.max(0, Math.min(v, 100));
-          itemDiscount = Math.round((base * pct) / 100);
-        }
-        const lineTotal = Math.max(0, base - itemDiscount);
-
+      {rows.map((r) => {
         return (
-          <div key={`${i.barcode}-${i.name}`} className="item">
-            <div className="itemName">{i.name}</div>
+          <div key={r.key} className="item">
+            <div className="itemName">{r.name}</div>
             <div className="row">
-              <span>{count(qty)} x {money(price)}</span>
-              <span>{money(lineTotal)}</span>
+              <span>{count(r.qty)} x {money(r.unitPrice)}</span>
+              <span>{money(r.lineTotal)}</span>
             </div>
-            {itemDiscount > 0 && (
+            {r.discount > 0 && (
               <div className="row small">
-                <span>Item Discount</span>
-                <span>-{money(itemDiscount)}</span>
+                <span>Total Discount</span>
+                <span>-{money(r.discount)}</span>
+                <span>Special Discount</span>
+                <span>-{money(r.discount)}</span>
               </div>
+              
             )}
           </div>
         );
@@ -322,7 +352,9 @@ export default function ReceiptPrint(props) {
       {showTotals && (
         <>
           <div className="row"><span>Subtotal</span><span>{money(subtotal)}</span></div>
-          <div className="row"><span>Discount</span><span>{money(discount)}</span></div>
+          <div className="row"><span>Total</span><span>{money(totalWithFree)}</span></div>
+          <div className="row"><span>Special Discount</span><span>{money(specialDiscount)}</span></div>
+          <div className="row"><span>Total Discount</span><span>{money(totalDiscount)}</span></div>
           <div className="row bold"><span>Total</span><span>{money(grandTotal)}</span></div>
         </>
       )}

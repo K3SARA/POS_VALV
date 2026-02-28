@@ -25,6 +25,16 @@ export default function Customers() {
   const reportsMenuRef = React.useRef(null);
   const stockMenuRef = React.useRef(null);
   const customerImportInputRef = React.useRef(null);
+  const [importProgress, setImportProgress] = useState({
+    active: false,
+    fileName: "",
+    current: 0,
+    total: 0,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+  });
   const downloadCustomersCsv = () => {
     const headers = ["customerId", "name", "phone", "address", "outstanding", "createdAt"];
     const lines = [headers.join(",")];
@@ -85,8 +95,28 @@ export default function Customers() {
     });
 
     let created = 0, updated = 0, skipped = 0, failed = 0;
+    const updateProgress = (current) =>
+      setImportProgress((prev) => ({
+        ...prev,
+        current,
+        created,
+        updated,
+        skipped,
+        failed,
+      }));
+    setImportProgress({
+      active: true,
+      fileName: file.name || "customers.csv",
+      current: 0,
+      total: parsed.length,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+    });
 
-    for (const row of parsed) {
+    for (let i = 0; i < parsed.length; i += 1) {
+      const row = parsed[i];
       const customerId = String(
         row.customerid ||
           row.customer_id ||
@@ -98,7 +128,7 @@ export default function Customers() {
       const phone = String(row.phone || "").trim();
       const address = String(row.address || "").trim();
 
-      if (!name) { skipped += 1; continue; }
+      if (!name) { skipped += 1; updateProgress(i + 1); continue; }
 
       try {
         if (customerId) {
@@ -127,6 +157,7 @@ export default function Customers() {
       } catch {
         failed += 1;
       }
+      updateProgress(i + 1);
     }
 
     await loadCustomers();
@@ -134,6 +165,7 @@ export default function Customers() {
   } catch (e) {
     setMsg("Error: " + e.message);
   } finally {
+    setImportProgress((prev) => ({ ...prev, active: false }));
     setLoading(false);
   }
 };
@@ -469,6 +501,39 @@ export default function Customers() {
             <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button className="btn secondary" onClick={() => setEditRow(null)}>Cancel</button>
               <button className="btn" onClick={saveEdit} disabled={loading}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importProgress.active && (
+        <div className="overlay" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" style={{ width: "min(560px, 100%)" }}>
+            <h3 style={{ marginTop: 0 }}>Importing Customers...</h3>
+            <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 10 }}>
+              {importProgress.fileName}
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              Row {formatNumber(importProgress.current)} / {formatNumber(importProgress.total)}
+            </div>
+            <div style={{ height: 10, background: "#1f2937", borderRadius: 999, overflow: "hidden", marginBottom: 12 }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: `${importProgress.total ? Math.min(100, Math.round((importProgress.current / importProgress.total) * 100)) : 0}%`,
+                  background: "linear-gradient(90deg, #22c1b5, #3b82f6)",
+                  transition: "width 120ms ease",
+                }}
+              />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, fontSize: 13 }}>
+              <div>Created: <b>{formatNumber(importProgress.created)}</b></div>
+              <div>Updated: <b>{formatNumber(importProgress.updated)}</b></div>
+              <div>Skipped: <b>{formatNumber(importProgress.skipped)}</b></div>
+              <div>Failed: <b>{formatNumber(importProgress.failed)}</b></div>
+            </div>
+            <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted)" }}>
+              Please wait until import completes.
             </div>
           </div>
         </div>

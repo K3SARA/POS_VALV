@@ -881,6 +881,7 @@ const closeEdit = () => {
                   customerName={viewSale.customerName || viewSale.customer?.name || ""}
                   customerPhone={viewSale.customerPhone || viewSale.customer?.phone || ""}
                   customerAddress={viewSale.customerAddress || viewSale.customer?.address || ""}
+                  staffName={viewSale.createdBy?.username || viewSale.username || ""}
                     items={(viewSale.saleItems || []).map((si) => ({
                       barcode: si.product?.barcode || si.barcode || "",
                       name: si.product?.name || si.name || "Item",
