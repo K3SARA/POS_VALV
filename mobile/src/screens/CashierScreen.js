@@ -255,7 +255,7 @@ export default function CashierScreen() {
       });
       setOutstandingMap(map);
     } catch (e) {
-      setError(e.message || "Failed to load cashier data");
+      setError(e.message || "Failed to load rep data");
     } finally {
       setLoading(false);
     }
@@ -778,7 +778,7 @@ export default function CashierScreen() {
         contentContainerStyle={{ paddingBottom: 16 }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.heading}>Cashier | {username || "User"}</Text>
+        <Text style={styles.heading}>Rep | {username || "User"}</Text>
         {activeChequeAlert && dismissedChequeAlertKey !== activeChequeAlertKey ? (
           <View style={styles.chequeAlert}>
             <Text style={styles.chequeAlertText}>
@@ -820,7 +820,7 @@ export default function CashierScreen() {
           </View>
         ) : null}
         {requiresStartDay && !dayStarted && !dayStatusLoading ? (
-          <Text style={styles.dayWarn}>Cashier actions are locked until Start Day is completed.</Text>
+          <Text style={styles.dayWarn}>Rep actions are locked until Start Day is completed.</Text>
         ) : null}
         {loading ? <ActivityIndicator style={{ marginBottom: 10 }} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -1236,7 +1236,7 @@ export default function CashierScreen() {
               </Pressable>
             </View>
             {!dayStarted ? (
-              <Text style={[styles.meta, { marginTop: 8 }]}>Cashier actions stay locked until Start Day.</Text>
+              <Text style={[styles.meta, { marginTop: 8 }]}>Rep actions stay locked until Start Day.</Text>
             ) : null}
           </View>
         </View>

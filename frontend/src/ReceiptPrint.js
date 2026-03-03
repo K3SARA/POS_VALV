@@ -57,11 +57,11 @@ export default function ReceiptPrint(props) {
   const creditPeriodDays = Math.max(1, Number.parseInt(String(layout.creditPeriodDays ?? 55), 10) || 55);
   const safeRoute = props.route || props.dayRoute || "-";
   const safeUser = props.staffName || props.username || "-";
-  const rows = items.flatMap((i, idx) => {
+  const rows = items.map((i, idx) => {
     const price = Number(i.price) || 0;
-    const qty = Number(i.qty) || 0;
+    const paidQty = Number(i.freeIssue ? 0 : i.qty || 0) || 0;
     const freeQty = Number(i.freeIssue ? i.qty : i.freeQty || 0) || 0;
-    const base = price * qty;
+    const base = price * paidQty;
     const t = i.itemDiscountType || "none";
     const v = Number(i.itemDiscountValue || 0);
     let itemDiscount = 0;
@@ -72,49 +72,34 @@ export default function ReceiptPrint(props) {
       itemDiscount = Math.round((base * pct) / 100);
     }
 
-    const out = [];
+    const freeValue = price * freeQty;
+    const total = price * (paidQty + freeQty);
+    const discountCol = freeValue + itemDiscount;
+    const totalValue = Math.max(0, total - discountCol);
 
-    out.push({
-      key: `${i.barcode}-${i.name}-${idx}-paid`,
+    return {
+      key: `${i.barcode}-${i.name}-${idx}`,
       code: i.barcode || "-",
       name: i.name || "-",
-      qty,
-      freeQty: 0,
+      qty: paidQty,
+      freeQty,
       unitPrice: price,
-      total: base,
-      discount: itemDiscount,
-      lineTotal: Math.max(0, base - itemDiscount),
-      isFreeRow: false,
-    });
-
-    if (freeQty > 0) {
-      const freeValue = price * freeQty;
-      out.push({
-        key: `${i.barcode}-${i.name}-${idx}-free`,
-        code: i.barcode || "-",
-        name: `${i.name || "-"} (FREE)`,
-        qty: freeQty,
-        freeQty,
-        unitPrice: price,
-        total: freeValue,
-        discount: freeValue,
-        lineTotal: 0,
-        isFreeRow: true,
-      });
-    }
-
-    return out;
+      total,
+      discount: discountCol,
+      lineTotal: totalValue,
+      itemDiscount,
+      freeValue,
+      isFreeRow: Boolean(i.freeIssue),
+    };
   });
-  const itemLevelDiscount = rows
-    .filter((row) => !row.isFreeRow)
-    .reduce((sum, row) => sum + Number(row.discount || 0), 0);
-  const freeItemsValue = rows
-    .filter((row) => row.isFreeRow)
-    .reduce((sum, row) => sum + Number(row.discount || 0), 0);
+  const itemLevelDiscount = rows.reduce((sum, row) => sum + Number(row.itemDiscount || 0), 0);
+  const freeItemsValue = rows.reduce((sum, row) => sum + Number(row.freeValue || 0), 0);
+  const tableTotal = rows.reduce((sum, row) => sum + Number(row.total || 0), 0);
+  const tableDiscountTotal = rows.reduce((sum, row) => sum + Number(row.discount || 0), 0);
   const orderDiscount = Number(discount || 0);
-  const specialDiscount = itemLevelDiscount; // paid items discount only
-  const totalDiscount = orderDiscount + specialDiscount + freeItemsValue;
-  const totalWithFree = Number(subtotal || 0) + freeItemsValue;
+  const specialDiscount = orderDiscount; // whole-bill discount from Discount & Payment section
+  const totalDiscount = tableDiscountTotal;
+  const totalWithFree = tableTotal;
 
   if (layoutMode === "a4") {
     return (

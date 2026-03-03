@@ -41,7 +41,7 @@ export default function CashierDayLogsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 16 }}>
-      <Text style={styles.heading}>Cashier Day Logs</Text>
+      <Text style={styles.heading}>Rep Day Logs</Text>
       {loading ? <ActivityIndicator style={{ marginBottom: 10 }} /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -75,7 +75,7 @@ export default function CashierDayLogsScreen() {
       {rows.map((row) => (
         <View key={String(row.id)} style={styles.card}>
           <Text style={styles.name}>
-            {row?.cashier?.username || "Cashier"} | {row.route || "-"}
+            {row?.cashier?.username || "Rep"} | {row.route || "-"}
           </Text>
           <Text style={styles.meta}>Started: {row.startedAt ? new Date(row.startedAt).toLocaleString() : "-"}</Text>
           <Text style={styles.meta}>Ended: {row.endedAt ? new Date(row.endedAt).toLocaleString() : "Active"}</Text>

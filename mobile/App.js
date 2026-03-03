@@ -15,6 +15,7 @@ import AdminScreen from "./src/screens/AdminScreen";
 import CustomersScreen from "./src/screens/CustomersScreen";
 import RoutesScreen from "./src/screens/RoutesScreen";
 import CashierDayLogsScreen from "./src/screens/CashierDayLogsScreen";
+import RequestedSalesReportScreen from "./src/screens/RequestedSalesReportScreen";
 
 const Tabs = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -25,11 +26,12 @@ function TabIcon({ routeName, focused }) {
     Admin: "speedometer-outline",
     Routes: "map-outline",
     DayLogs: "time-outline",
-    Cashier: "receipt-outline",
+    CashierLogin: "receipt-outline",
     Products: "cube-outline",
     Sales: "bar-chart-outline",
     Customers: "people-outline",
     Returns: "refresh-circle-outline",
+    RequestedSalesReport: "document-text-outline",
   };
   return (
     <Ionicons
@@ -57,30 +59,99 @@ function HeaderCenterLogo() {
 }
 
 function CashierTabs() {
+  const [open, setOpen] = React.useState(false);
+  const anim = React.useRef(new Animated.Value(0)).current;
+  const drawerItems = [
+    { key: "CashierLogin", label: "Rep Login", icon: "receipt-outline" },
+    { key: "Products", label: "Stock", icon: "cube-outline" },
+    { key: "Customers", label: "Customers", icon: "people-outline" },
+    { key: "Returns", label: "Returns", icon: "refresh-circle-outline" },
+    { key: "RequestedSalesReport", label: "Requested Sales Report", icon: "document-text-outline" },
+  ];
+
+  function setDrawer(nextOpen) {
+    setOpen(nextOpen);
+    Animated.timing(anim, {
+      toValue: nextOpen ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  const translateX = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-ADMIN_DRAWER_WIDTH, 0],
+  });
+
   return (
-    <Tabs.Navigator
-      screenOptions={({ route }) => ({
-        headerLeft: () => (
-          <Text style={styles.headerLeftTitle}>{route.name}</Text>
-        ),
-        headerTitle: () => <HeaderCenterLogo />,
-        headerRight: () => <HeaderRightLogout />,
-        headerRightContainerStyle: { paddingRight: 8 },
-        headerTitleAlign: "center",
-        tabBarActiveTintColor: "#1d4ed8",
-        tabBarIcon: ({ focused }) => (
-          <TabIcon focused={focused} routeName={route.name} />
-        ),
-      })}
-    >
-      <Tabs.Screen name="Cashier" component={CashierScreen} />
-      <Tabs.Screen name="Products" component={ProductsScreen} />
-      <Tabs.Screen name="Customers" component={CustomersScreen} />
-      <Tabs.Screen name="Returns" component={ReturnsScreen} />
-      <Tabs.Screen name="Sales" component={SalesScreen} />
-    </Tabs.Navigator>
+    <View style={styles.adminWrap}>
+      <Tabs.Navigator
+        initialRouteName="CashierLogin"
+        screenOptions={({ route }) => ({
+          headerLeft: () => (
+            <View style={styles.headerLeftWrap}>
+              <Pressable style={styles.menuBtn} onPress={() => setDrawer(!open)}>
+                <Text style={styles.menuBtnText}>...</Text>
+              </Pressable>
+              <Text style={styles.headerLeftTitle}>
+                {route.name === "RequestedSalesReport" ||
+                route.name === "CashierLogin" ||
+                route.name === "Products" ||
+                route.name === "Customers" ||
+                route.name === "Returns"
+                  ? ""
+                  : route.name}
+              </Text>
+            </View>
+          ),
+          headerTitle: () => <HeaderCenterLogo />,
+          headerRight: () => <HeaderRightLogout />,
+          headerRightContainerStyle: { paddingRight: 8 },
+          headerTitleAlign: "center",
+          tabBarActiveTintColor: "#1d4ed8",
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} routeName={route.name} />
+          ),
+          tabBarStyle:
+            route.name === "CashierLogin" || route.name === "RequestedSalesReport"
+              ? { display: "none" }
+              : undefined,
+          tabBarButton:
+            route.name === "CashierLogin" || route.name === "RequestedSalesReport"
+              ? () => null
+              : undefined,
+        })}
+      >
+        <Tabs.Screen name="CashierLogin" component={CashierScreen} />
+        <Tabs.Screen name="Products" component={ProductsScreen} />
+        <Tabs.Screen name="Customers" component={CustomersScreen} />
+        <Tabs.Screen name="Returns" component={ReturnsScreen} />
+        <Tabs.Screen name="Sales" component={SalesScreen} />
+        <Tabs.Screen name="RequestedSalesReport" component={RequestedSalesReportScreen} />
+      </Tabs.Navigator>
+
+      {open ? <Pressable style={styles.drawerBackdrop} onPress={() => setDrawer(false)} /> : null}
+
+      <Animated.View style={[styles.drawer, { transform: [{ translateX }] }]}>
+        {drawerItems.map((item) => (
+          <Pressable
+            key={item.key}
+            style={styles.drawerItem}
+            onPress={() => {
+              navigationRef.current?.navigate("CashierTabs", { screen: item.key });
+              setDrawer(false);
+            }}
+          >
+            <Ionicons name={item.icon} size={18} color="#1f2937" style={styles.drawerIcon} />
+            <Text style={styles.drawerText}>{item.label}</Text>
+          </Pressable>
+        ))}
+      </Animated.View>
+    </View>
   );
 }
+
+const navigationRef = React.createRef();
 
 function AdminTabs() {
   const { logout } = useAuth();
@@ -91,8 +162,8 @@ function AdminTabs() {
   const items = [
     { key: "Admin", label: "Admin Dashboard", icon: "speedometer-outline" },
     { key: "Routes", label: "Routes", icon: "map-outline" },
-    { key: "DayLogs", label: "Cashier Day Logs", icon: "time-outline" },
-    { key: "Cashier", label: "Cashier", icon: "receipt-outline" },
+    { key: "DayLogs", label: "Rep Day Logs", icon: "time-outline" },
+    { key: "Cashier", label: "Rep", icon: "receipt-outline" },
     { key: "Products", label: "Products", icon: "cube-outline" },
     { key: "Customers", label: "Customers", icon: "people-outline" },
     { key: "Returns", label: "Returns", icon: "refresh-circle-outline" },
@@ -204,7 +275,7 @@ function RootNavigator() {
 export default function App() {
   return (
     <AuthProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <StatusBar style="dark" />
         <RootNavigator />
       </NavigationContainer>
@@ -319,6 +390,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 16,
     marginLeft: 12,
+  },
+  headerLeftWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 8,
   },
   loaderWrap: {
     flex: 1,
