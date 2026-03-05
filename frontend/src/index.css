@@ -623,7 +623,7 @@ h1, h2, h3, h4 {
   display: grid;
   gap: 7px;
   margin-top: 20px;
-  margin-left: 20px;
+  margin-left: -10px;
   
 }
 
