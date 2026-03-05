@@ -262,6 +262,37 @@ export default function ReceiptPrint(props) {
           <div><div className="inv-sign-line" />Delivered by</div>
         </div>
 
+        <div className="inv-collection">
+          <div className="inv-collection-left">
+            <div className="inv-collection-row inv-payment-method-row">
+              <span className="inv-collection-label">Payment Method -</span>
+              <span className="inv-collection-choice">
+                Cash <span className="inv-check-box" />
+              </span>
+              <span className="inv-collection-choice">
+                Cheque <span className="inv-check-box" />
+              </span>
+            </div>
+            <div className="inv-collection-row">
+              <span className="inv-collection-label">Cheque No.</span>
+              <span className="inv-collection-dots" />
+            </div>
+            <div className="inv-collection-row">
+              <span className="inv-collection-label">Name of the Bank</span>
+              <span className="inv-collection-dots" />
+            </div>
+            <div className="inv-collection-row">
+              <span className="inv-collection-label">Cheque Realization Date</span>
+              <span className="inv-collection-dots" />
+            </div>
+          </div>
+          <div className="inv-collection-brace">{"}"}</div>
+          <div className="inv-collection-right">
+            <div className="inv-collect-line" />
+            <div className="inv-collect-label">Collected by</div>
+          </div>
+        </div>
+
         <div className="inv-powered" >Powered by J&co.</div>
       </div>
     );

@@ -623,7 +623,7 @@ h1, h2, h3, h4 {
   display: grid;
   gap: 7px;
   margin-top: 20px;
-  margin-left: -30px;
+  margin-left: 20px;
   
 }
 
@@ -834,7 +834,7 @@ margin-top: 12px;
   font-size: 14px;
   font-weight: 500;
   margin: 600px 0 50px;
-  padding-bottom: 35px;
+  padding-bottom: 80px;
 }
 
 .inv-signatures {
@@ -843,7 +843,7 @@ margin-top: 12px;
   gap: 22px;
   margin-top: -20px;
   font-size: 13px;
-  margin-bottom: -50px;
+  margin-bottom: 80px;
 }
 
 .inv-sign-line {
@@ -856,6 +856,86 @@ margin-top: 12px;
   font-size: 8px;
   color: #374151;
   margin-top: 80px;
+}
+
+.inv-collection {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr 28px 220px;
+  gap: 14px;
+  align-items: end;
+}
+
+.inv-collection-left {
+  display: grid;
+  gap: 8px;
+}
+
+.inv-collection-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: center;
+  column-gap: 10px;
+  font-size: 13px;
+  color: #111;
+  margin-bottom: 10px;
+}
+
+.inv-payment-method-row {
+  grid-template-columns: 180px auto auto;
+  column-gap: 24px;
+  margin-top: 50px;
+}
+
+.inv-collection-label {
+  font-weight: 600;
+}
+
+.inv-collection-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inv-check-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #555;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.inv-collection-dots {
+  border-bottom: 1px dotted #666;
+  min-height: 10px;
+}
+
+.inv-collection-right {
+  text-align: center;
+  color: #333;
+  padding-bottom: 2px;
+}
+
+.inv-collection-brace {
+  align-self: center;
+  justify-self: center;
+  font-size: 72px;
+  line-height: 0.8;
+  color: #4b5563;
+  font-weight: 400;
+  transform: translateY(36px);
+}
+
+.inv-collect-line {
+  border-bottom: 1px dotted #666;
+  margin-bottom: 6px;
+}
+
+.inv-collect-label {
+  font-size: 13px;
 }
 
 
@@ -898,6 +978,11 @@ margin-top: 12px;
 
   body.receipt-print.receipt-print-a4 .inv-thanks {
     margin: 6px 0 12px !important;
+  }
+
+  body.receipt-print.receipt-print-a4 .inv-collection {
+    margin-top: 10px !important;
+    page-break-inside: avoid;
   }
 }
  

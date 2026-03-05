@@ -881,7 +881,7 @@ const closeEdit = () => {
                   customerName={viewSale.customerName || viewSale.customer?.name || ""}
                   customerPhone={viewSale.customerPhone || viewSale.customer?.phone || ""}
                   customerAddress={viewSale.customerAddress || viewSale.customer?.address || ""}
-                  staffName={viewSale.createdBy?.username || viewSale.username || ""}
+                  staffName={viewSale.createdBy?.username || viewSale.username || localStorage.getItem("username") || ""}
                     items={(viewSale.saleItems || []).map((si) => ({
                       barcode: si.product?.barcode || si.barcode || "",
                       name: si.product?.name || si.name || "Item",
@@ -894,9 +894,9 @@ const closeEdit = () => {
                   subtotal={Number(
                     viewSale.subtotal ??
                       (Number(viewSale.total ?? viewSale.grandTotal ?? 0) +
-                        Number(viewSale.discountAmount ?? viewSale.discount ?? 0))
+                        Number(viewSale.discountValue ?? viewSale.discountAmount ?? viewSale.discount ?? 0))
                   )}
-                  discount={Number(viewSale.discountAmount ?? viewSale.discount ?? 0)}
+                  discount={Number(viewSale.discountValue ?? viewSale.discountAmount ?? viewSale.discount ?? 0)}
                   grandTotal={Number(viewSale.total ?? viewSale.grandTotal ?? 0)}
                   paymentMethod={viewSale.paymentMethod || "cash"}
                   cashReceived={viewSale.cashReceived ?? 0}
