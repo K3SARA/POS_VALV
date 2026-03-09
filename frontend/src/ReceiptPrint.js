@@ -40,11 +40,20 @@ export default function ReceiptPrint(props) {
     balance = 0,
   } = props;
 
+  const toNum = (value) => {
+    if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+    if (value == null) return 0;
+    const cleaned = String(value).replace(/,/g, "").replace(/[^\d.-]/g, "").trim();
+    if (!cleaned || cleaned === "-" || cleaned === "." || cleaned === "-.") return 0;
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
   const freeItems = (items || [])
     .map((i) => ({
       code: i.barcode || "-",
       name: i.name,
-      qty: Number(i.freeIssue ? i.qty : i.freeQty || 0) || 0,
+      qty: toNum(i.freeIssue ? i.qty : i.freeQty || 0),
     }))
     .filter((i) => i.qty > 0);
   const freeItemsText = freeItems.map((i) => `${i.name} x ${Number(i.qty || 0).toLocaleString()}`).join(", ");
@@ -58,12 +67,12 @@ export default function ReceiptPrint(props) {
   const safeRoute = props.route || props.dayRoute || "-";
   const safeUser = props.staffName || props.username || "-";
   const rows = items.map((i, idx) => {
-    const price = Number(i.price) || 0;
-    const paidQty = Number(i.freeIssue ? 0 : i.qty || 0) || 0;
-    const freeQty = Number(i.freeIssue ? i.qty : i.freeQty || 0) || 0;
+    const price = toNum(i.price);
+    const paidQty = toNum(i.freeIssue ? 0 : i.qty || 0);
+    const freeQty = toNum(i.freeIssue ? i.qty : i.freeQty || 0);
     const base = price * paidQty;
     const t = i.itemDiscountType || "none";
-    const v = Number(i.itemDiscountValue || 0);
+    const v = toNum(i.itemDiscountValue || 0);
     let itemDiscount = 0;
     if (t === "amount") {
       itemDiscount = Math.max(0, Math.min(v, base));
@@ -96,7 +105,7 @@ export default function ReceiptPrint(props) {
   const freeItemsValue = rows.reduce((sum, row) => sum + Number(row.freeValue || 0), 0);
   const tableTotal = rows.reduce((sum, row) => sum + Number(row.total || 0), 0);
   const tableDiscountTotal = rows.reduce((sum, row) => sum + Number(row.discount || 0), 0);
-  const orderDiscount = Number(discount || 0);
+  const orderDiscount = toNum(discount || 0);
   const specialDiscount = orderDiscount; // whole-bill discount from Discount & Payment section
   const totalDiscount = tableDiscountTotal;
   const totalWithFree = tableTotal;
